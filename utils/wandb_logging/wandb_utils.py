@@ -45,7 +45,7 @@ def check_wandb_resume(opt):
     process_wandb_config_ddp_mode(opt) if opt.global_rank not in [-1, 0] else None
     if isinstance(opt.resume, str):
         if opt.resume.startswith(WANDB_ARTIFACT_PREFIX):
-            if opt.global_rank not in [-1, 0]: # For resuming DDP runs
+            if opt.global_rank not in [-1, 0]: # For resuming DDP runs-wide-activation
                 run_id, project, model_artifact_name = get_run_info(opt.resume)
                 api = wandb.Api()
                 artifact = api.artifact(project + '/' + model_artifact_name + ':latest')
@@ -89,14 +89,14 @@ class WandbLogger():
             if opt.resume.startswith(WANDB_ARTIFACT_PREFIX):
                 run_id, project, model_artifact_name = get_run_info(opt.resume)
                 model_artifact_name = WANDB_ARTIFACT_PREFIX + model_artifact_name
-                assert wandb, 'install wandb to resume wandb runs'
-                # Resume wandb-artifact:// runs here| workaround for not overwriting wandb.config
+                assert wandb, 'install wandb to resume wandb runs-wide-activation'
+                # Resume wandb-artifact:// runs-wide-activation here| workaround for not overwriting wandb.config
                 self.wandb_run = wandb.init(id=run_id, project=project, resume='allow')
                 opt.resume = model_artifact_name
         elif self.wandb:
             self.wandb_run = wandb.init(config=opt,
                                         resume="allow",
-                                        project='YOLOv5' if opt.project == 'runs/train' else Path(opt.project).stem,
+                                        project='YOLOv5' if opt.project == 'runs-wide-activation/train' else Path(opt.project).stem,
                                         name=name,
                                         job_type=job_type,
                                         id=run_id) if not wandb.run else wandb.run      
@@ -119,7 +119,7 @@ class WandbLogger():
         check_dataset(self.data_dict)
         config_path = self.log_dataset_artifact(opt.data,
                                                    opt.single_cls,
-                                                   'YOLOv5' if opt.project == 'runs/train' else Path(opt.project).stem)
+                                                   'YOLOv5' if opt.project == 'runs-wide-activation/train' else Path(opt.project).stem)
         print("Created dataset config file ", config_path)
         with open(config_path) as f:
             wandb_data_dict = yaml.load(f, Loader=yaml.SafeLoader)

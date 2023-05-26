@@ -14,7 +14,7 @@ if [ ! -d yolov5 ]; then
   python -m pip install --upgrade pip && pip install -r requirements.txt && python detect.py && echo "Requirements done." &
   wait && echo "All tasks done." # finish background tasks
 else
-  echo "Running re-start script." # resume interrupted runs
+  echo "Running re-start script." # resume interrupted runs-wide-activation
   i=0
   list=$(sudo docker ps -qa) # container list i.e. $'one\ntwo\nthree\nfour'
   while IFS= read -r id; do

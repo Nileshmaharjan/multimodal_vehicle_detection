@@ -2,22 +2,22 @@ import torch.nn as nn
 import math
 import torch
 
-
-class WideActivation(nn.Module):
-    def __init__(self, num_parameters=64):
-        super(WideActivation, self).__init__()
-
-        self.num_parameters = num_parameters
-        self.alpha = nn.Parameter(torch.Tensor(num_parameters))
-        self.beta = nn.Parameter(torch.Tensor(num_parameters))
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        nn.init.ones_(self.alpha)
-        nn.init.zeros_(self.beta)
-
-    def forward(self, x):
-        return self.alpha.view(1, self.num_parameters, 1, 1) * x + self.beta.view(1, self.num_parameters, 1, 1)
+#
+# class WideActivation(nn.Module):
+#     def __init__(self, num_parameters=4):
+#         super(WideActivation, self).__init__()
+#
+#         self.num_parameters = num_parameters
+#         self.alpha = nn.Parameter(torch.Tensor(num_parameters))
+#         self.beta = nn.Parameter(torch.Tensor(num_parameters))
+#         self.reset_parameters()
+#
+#     def reset_parameters(self):
+#         nn.init.ones_(self.alpha)
+#         nn.init.zeros_(self.beta)
+#
+#     def forward(self, x):
+#         return self.alpha.view(1, self.num_parameters, 1, 1) * x + self.beta.view(1, self.num_parameters, 1, 1)
 
 def make_model(args, parent=False):
     return WDSR(args)
@@ -48,39 +48,72 @@ class Upsampler(nn.Sequential):
         super(Upsampler, self).__init__(*m)
 
 
+# class ResBlock1(nn.Module):
+#     def __init__(self, conv, n_feat, kernel_size, act=WideActivation(), res_scale=1):
+#         super(ResBlock, self).__init__()
+#         self.res_scale = res_scale
+#         m = []
+#         m.append(
+#             nn.Conv2d(n_feat, n_feat,kernel_size, padding=kernel_size//2)
+#         )
+#         m.append(act)
+#         m.append(
+#             nn.Conv2d(n_feat, n_feat, kernel_size, padding=kernel_size//2)
+#         )
+#
+#         self.body = nn.Sequential(*m)
+#
+#     def forward(self,x):
+#         res = self.body(x).mul(self.res_scale)
+#         res += x
+#
+#         return res
+
+
 class ResBlock(nn.Module):
-    def __init__(self, conv, n_feat, kernel_size, act=WideActivation(), res_scale=1):
+    def __init__(self, conv, n_feat, kernel_size, act=nn.ReLU(inplace=True), res_scale=1):
         super(ResBlock, self).__init__()
         self.res_scale = res_scale
-        m = []
-        m.append(
-            nn.Conv2d(n_feat, n_feat,kernel_size, padding=kernel_size//2)
-        )
-        m.append(act)
-        m.append(
-            nn.Conv2d(n_feat, n_feat, kernel_size, padding=kernel_size//2)
-        )
+        self.conv1 = nn.Conv2d(n_feat, n_feat//4, 1)
+        self.bn1 = nn.BatchNorm2d(n_feat//4)
+        self.conv2 = nn.Conv2d(n_feat//4, n_feat//4, kernel_size, padding=kernel_size//2)
+        self.bn2 = nn.BatchNorm2d(n_feat//4)
+        self.conv3 = nn.Conv2d(n_feat//4, n_feat, 1)
+        self.bn3 = nn.BatchNorm2d(n_feat)
+        self.act = act
 
-        self.body = nn.Sequential(*m)
+    def forward(self, x):
+        identity = x
 
-    def forward(self,x):
-        res = self.body(x).mul(self.res_scale)
-        res += x
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.act(out)
 
-        return res
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.act(out)
 
+        out = self.conv3(out)
+        out = self.bn3(out)
+
+        out = out.mul(self.res_scale)
+        out += identity
+        out = self.act(out)
+
+        return out
 
 # num_channels: total no of output channel
 # input_channel: total no of input channel
 class WDSR(nn.Module):
-    def __init__(self, num_channels=3,input_channel=64, factor=4, width=64, depth=16, kernel_size=3, conv=default_conv):
+    def __init__(self, num_channels=3,input_channel=64, factor=4, width=16, depth=16, kernel_size=3, conv=default_conv):
         super(WDSR, self).__init__()
 
         n_resblock = depth
         n_feats = width
         kernel_size = kernel_size
         scale = factor
-        act=WideActivation()
+        act=nn.ReLU(inplace=True)
+
 
         # define head module
         m_head = [conv(input_channel, n_feats, kernel_size)]
@@ -94,6 +127,7 @@ class WDSR(nn.Module):
         m_body.append(conv(n_feats, n_feats, kernel_size))
 
         # define tail module
+
         m_tail = [
             Upsampler(conv, scale, n_feats, act=False),
             conv(n_feats, num_channels, kernel_size)

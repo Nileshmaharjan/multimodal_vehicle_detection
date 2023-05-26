@@ -4,4 +4,6 @@ dataset/
 Fig/
 lognormal/
 original/
-runs/
+runs-wide-activation/
+runs-bn-con-bn-con/
+runs-wide-activation-1/

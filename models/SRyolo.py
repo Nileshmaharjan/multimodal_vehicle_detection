@@ -388,6 +388,6 @@ if __name__ == '__main__':
     # Tensorboard
     # from torch.utils.tensorboard import SummaryWriter
     # tb_writer = SummaryWriter()
-    # print("Run 'tensorboard --logdir=models/runs' to view tensorboard at http://localhost:6006/")
+    # print("Run 'tensorboard --logdir=models/runs-wide-activation' to view tensorboard at http://localhost:6006/")
     # tb_writer.add_graph(model.model, img)  # add model to tensorboard
     # tb_writer.add_image('test', img[0], dataformats='CWH')  # add model to tensorboard
