@@ -244,8 +244,6 @@ def train(hyp, opt, device, tb_writer=None):
             # model._initialize_biases(cf.to(device))
             c = c.numpy().astype(np.float64)
 
-            print(c.dtype)
-            print(c)
             if plots:
                 plot_labels(labels, names, save_dir, loggers)
                 if tb_writer:

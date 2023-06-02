@@ -2,22 +2,6 @@ import torch.nn as nn
 import math
 import torch
 
-#
-# class WideActivation(nn.Module):
-#     def __init__(self, num_parameters=4):
-#         super(WideActivation, self).__init__()
-#
-#         self.num_parameters = num_parameters
-#         self.alpha = nn.Parameter(torch.Tensor(num_parameters))
-#         self.beta = nn.Parameter(torch.Tensor(num_parameters))
-#         self.reset_parameters()
-#
-#     def reset_parameters(self):
-#         nn.init.ones_(self.alpha)
-#         nn.init.zeros_(self.beta)
-#
-#     def forward(self, x):
-#         return self.alpha.view(1, self.num_parameters, 1, 1) * x + self.beta.view(1, self.num_parameters, 1, 1)
 
 def make_model(args, parent=False):
     return WDSR(args)
@@ -47,27 +31,6 @@ class Upsampler(nn.Sequential):
 
         super(Upsampler, self).__init__(*m)
 
-
-# class ResBlock1(nn.Module):
-#     def __init__(self, conv, n_feat, kernel_size, act=WideActivation(), res_scale=1):
-#         super(ResBlock, self).__init__()
-#         self.res_scale = res_scale
-#         m = []
-#         m.append(
-#             nn.Conv2d(n_feat, n_feat,kernel_size, padding=kernel_size//2)
-#         )
-#         m.append(act)
-#         m.append(
-#             nn.Conv2d(n_feat, n_feat, kernel_size, padding=kernel_size//2)
-#         )
-#
-#         self.body = nn.Sequential(*m)
-#
-#     def forward(self,x):
-#         res = self.body(x).mul(self.res_scale)
-#         res += x
-#
-#         return res
 
 
 class ResBlock(nn.Module):

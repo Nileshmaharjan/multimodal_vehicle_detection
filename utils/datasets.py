@@ -698,7 +698,6 @@ class LoadImagesAndLabels_sr(Dataset):  # for training/testing
 
         # Display cache
         [nf, nm, ne, nc, n] = cache.pop('results')  # found, missing, empty, corrupted, total
-        print('Here2')
         desc = f"Scanning '{cache_path}' for images and labels... {nf} found, {nm} missing, {ne} empty, {nc} corrupted"
         tqdm(None, desc=prefix + desc, total=n, initial=n)
         assert nf > 0 or not augment, f'{prefix}No labels in {cache_path}. Can not train without labels. See {help_url}'

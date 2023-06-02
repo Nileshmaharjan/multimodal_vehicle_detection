@@ -45,7 +45,6 @@ class DeepLab(nn.Module):
         #self.attention = AttentionModel(128)
         self.sr_decoder = Decoder(c1,c2)
         self.wdsr = WDSR(num_channels=ch, input_channel=64, factor=8)
-        print(self.wdsr)
         # self.edsr = EDSR(num_channels=ch,input_channel=64, factor=8)
         # self.up_sr_1 = nn.ConvTranspose2d(64, 64, 2, stride=2) 
         # self.up_edsr_1 = EDSRConv(64,64)
