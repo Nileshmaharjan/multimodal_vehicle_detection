@@ -26,32 +26,57 @@ try:
     import thop  # for FLOPS computation
 except ImportError:
     thop = None
-import torch.nn.functional as F
+
 
 
 class Autoencoder(nn.Module):
     def __init__(self, input_channels, output_channels):
         super(Autoencoder, self).__init__()
-
         self.encoder = nn.Sequential(
-            nn.Conv2d(input_channels, 32, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(32, 16, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(input_channels, 16, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=7)
         )
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(16, 32, kernel_size=2, stride=2),
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(32, output_channels, kernel_size=2, stride=2),
-            nn.Sigmoid(),
+            nn.ConvTranspose2d(64, 32, kernel_size=7),
+            nn.ReLU(),
+            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(16, output_channels, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.Sigmoid()
         )
 
     def forward(self, x):
-        encoded = self.encoder(x)
-        decoded = self.decoder(encoded)
-        return decoded
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+
+
+# class Autoencoder(nn.Module):
+#     def __init__(self, input_channels, output_channels):
+#         super(Autoencoder, self).__init__()
+#
+#         self.encoder = nn.Sequential(
+#             nn.Conv2d(input_channels, 32, kernel_size=3, stride=1, padding=1),
+#             nn.ReLU(inplace=True),
+#             nn.MaxPool2d(kernel_size=2, stride=2),
+#             nn.Conv2d(32, 16, kernel_size=3, stride=1, padding=1),
+#             nn.ReLU(inplace=True),
+#             nn.MaxPool2d(kernel_size=2, stride=2),
+#         )
+#         self.decoder = nn.Sequential(
+#             nn.ConvTranspose2d(16, 32, kernel_size=2, stride=2),
+#             nn.ReLU(inplace=True),
+#             nn.ConvTranspose2d(32, output_channels, kernel_size=2, stride=2),
+#             nn.Sigmoid(),
+#         )
+#
+#     def forward(self, x):
+#         encoded = self.encoder(x)
+#         decoded = self.decoder(encoded)
+#         return decoded
 
 
 class Detect(nn.Module):
@@ -155,7 +180,9 @@ class Model(nn.Module):
     
     def forward(self, x, ir=torch.randn(1,3,512,512), input_mode='RGB+IR', augment=False, profile=False):
 
+
         # x = self.autoencoder(x)
+        # ir = self.autoencoder(ir)
         # input_mode = 'RGB+IR' #IRRGB
         if input_mode=='RGB':
             ir=x

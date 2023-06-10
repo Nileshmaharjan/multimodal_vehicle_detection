@@ -4,8 +4,9 @@ dataset/
 Fig/
 lognormal/
 original/
-runs-wide-activation/
-runs-bn-con-bn-con/
-runs-wide-activation-1/
-runs-auto/
-runs-SRyolo_new_mf_1/
+week_56/
+week_57/
+autoencoder/runs/
+autoencoder/runs-lr-0.001-bs-16-epoch-200/
+autoencoder/runs-lr-0.0001-bs-16-model-2-each
+runs/
