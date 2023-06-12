@@ -12,28 +12,31 @@ import torch.optim as optim
 
 data_dir = 'dataset'
 
-train_dataset = torchvision.datasets.MNIST(data_dir, train=True, download=True)
-test_dataset = torchvision.datasets.MNIST(data_dir, train=False, download=True)
-
 train_transform = transforms.Compose([
     transforms.ToTensor(),
 ])
 
-test_transform = transforms.Compose([
-    transforms.ToTensor(),
-])
+train_dataset = torchvision.datasets.FakeData(transform=train_transform, size=7000)
+# train_dataset = torchvision.datasets.MNIST(data_dir, train=True, download=True)0
+# test_dataset = torchvision.datasets.MNIST(data_dir, train=False, download=True)
 
-train_dataset.transform = train_transform
-test_dataset.transform = test_transform
+
+
+# test_transform = transforms.Compose([
+#     transforms.ToTensor(),
+# ])
+#
+# train_dataset.transform = train_transform
+# test_dataset.transform = test_transform
 
 m = len(train_dataset)
 
-train_data, val_data = random_split(train_dataset, [int(m - m * 0.2), int(m * 0.2)])
+train_data, val_data = random_split(train_dataset, [4900, 2100])
 batch_size = 256
 
 train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size)
 valid_loader = torch.utils.data.DataLoader(val_data, batch_size=batch_size)
-test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+# test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
 
 class Encoder(nn.Module):
@@ -43,12 +46,12 @@ class Encoder(nn.Module):
 
         ### Convolutional section
         self.encoder_cnn = nn.Sequential(
-            nn.Conv2d(1, 8, 3, stride=2, padding=1),
+            nn.Conv2d(3, 32, 3, stride=2, padding=1),
             nn.ReLU(True),
-            nn.Conv2d(8, 16, 3, stride=2, padding=1),
-            nn.BatchNorm2d(16),
+            nn.Conv2d(32, 64, 3, stride=2, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(True),
-            nn.Conv2d(16, 32, 3, stride=2, padding=0),
+            nn.Conv2d(64, 128, 3, stride=2, padding=0),
             nn.ReLU(True)
         )
 
@@ -56,15 +59,19 @@ class Encoder(nn.Module):
         self.flatten = nn.Flatten(start_dim=1)
         ### Linear section
         self.encoder_lin = nn.Sequential(
-            nn.Linear(3 * 3 * 32, 128),
+            nn.Linear(27 * 27 * 128, 128),
+            # nn.Linear(3 * 3 * 32, 128),
             nn.ReLU(True),
             nn.Linear(128, encoded_space_dim)
         )
 
     def forward(self, x):
         x = self.encoder_cnn(x)
+        # print('Here')
         x = self.flatten(x)
+        # print('adf')
         x = self.encoder_lin(x)
+        # print('sdf')
         return x
 
 
@@ -75,31 +82,35 @@ class Decoder(nn.Module):
         self.decoder_lin = nn.Sequential(
             nn.Linear(encoded_space_dim, 128),
             nn.ReLU(True),
-            nn.Linear(128, 3 * 3 * 32),
+            nn.Linear(128, 27 * 27 * 128),
+            # nn.Linear(128, 3 * 3 * 32),
             nn.ReLU(True)
         )
 
         self.unflatten = nn.Unflatten(dim=1,
-                                      unflattened_size=(32, 3, 3))
+                                      unflattened_size=(128, 27, 27))
 
         self.decoder_conv = nn.Sequential(
-            nn.ConvTranspose2d(32, 16, 3,
-                               stride=2, output_padding=0),
-            nn.BatchNorm2d(16),
+            nn.ConvTranspose2d(128, 64, 3,
+                               stride=2, padding=0, output_padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(True),
-            nn.ConvTranspose2d(16, 8, 3, stride=2,
+            nn.ConvTranspose2d(64, 32, 3, stride=2,
                                padding=1, output_padding=1),
-            nn.BatchNorm2d(8),
+            # nn.BatchNorm2d(8),
             nn.ReLU(True),
-            nn.ConvTranspose2d(8, 1, 3, stride=2,
+            nn.ConvTranspose2d(32, 3, 3, stride=2,
                                padding=1, output_padding=1)
         )
 
     def forward(self, x):
         x = self.decoder_lin(x)
         x = self.unflatten(x)
+        # print('here')
         x = self.decoder_conv(x)
+        # print('adf')
         x = torch.sigmoid(x)
+
         return x
 
 
