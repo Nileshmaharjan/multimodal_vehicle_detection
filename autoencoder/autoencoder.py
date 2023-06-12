@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt  # plotting library
 import numpy as np  # this module is useful to work with numerical arrays
 import pandas as pd
-import random
+import visualize_fake
 import torch
 import torchvision
 from torchvision import transforms
@@ -9,14 +9,22 @@ from torch.utils.data import DataLoader, random_split
 from torch import nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torch.utils.tensorboard import SummaryWriter
+import random
+# Set the directory for TensorBoard logs
+log_dir = 'D:/Research/Super/autoencoder/runs/'
+
+# Create a SummaryWriter object
+writer = SummaryWriter(log_dir=log_dir)
 
 data_dir = 'dataset'
 
+
 train_transform = transforms.Compose([
     transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
-
-train_dataset = torchvision.datasets.FakeData(transform=train_transform, size=7000)
+train_dataset = torchvision.datasets.CIFAR10(root='D:/Research/Super/autoencoder/dataset/', download=True, transform=train_transform)
 # train_dataset = torchvision.datasets.MNIST(data_dir, train=True, download=True)0
 # test_dataset = torchvision.datasets.MNIST(data_dir, train=False, download=True)
 
@@ -30,9 +38,10 @@ train_dataset = torchvision.datasets.FakeData(transform=train_transform, size=70
 # test_dataset.transform = test_transform
 
 m = len(train_dataset)
+print('m',m)
 
-train_data, val_data = random_split(train_dataset, [4900, 2100])
-batch_size = 256
+train_data, val_data = random_split(train_dataset, [36000,14000])
+batch_size = 64
 
 train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size)
 valid_loader = torch.utils.data.DataLoader(val_data, batch_size=batch_size)
@@ -41,78 +50,47 @@ valid_loader = torch.utils.data.DataLoader(val_data, batch_size=batch_size)
 
 class Encoder(nn.Module):
 
-    def __init__(self, encoded_space_dim, fc2_input_dim):
+    def __init__(self):
         super().__init__()
 
         ### Convolutional section
-        self.encoder_cnn = nn.Sequential(
-            nn.Conv2d(3, 32, 3, stride=2, padding=1),
-            nn.ReLU(True),
-            nn.Conv2d(32, 64, 3, stride=2, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(True),
-            nn.Conv2d(64, 128, 3, stride=2, padding=0),
-            nn.ReLU(True)
+        self.encoder = nn.Sequential(
+            nn.Conv2d(3, 8, kernel_size=5, stride=1, padding=2),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
+
+            nn.Conv2d(8, 16, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
         )
 
-        ### Flatten layer
-        self.flatten = nn.Flatten(start_dim=1)
-        ### Linear section
-        self.encoder_lin = nn.Sequential(
-            nn.Linear(27 * 27 * 128, 128),
-            # nn.Linear(3 * 3 * 32, 128),
-            nn.ReLU(True),
-            nn.Linear(128, encoded_space_dim)
-        )
 
     def forward(self, x):
-        x = self.encoder_cnn(x)
-        # print('Here')
-        x = self.flatten(x)
-        # print('adf')
-        x = self.encoder_lin(x)
-        # print('sdf')
+        x = self.encoder(x)
         return x
-
 
 class Decoder(nn.Module):
 
-    def __init__(self, encoded_space_dim, fc2_input_dim):
+    def __init__(self):
         super().__init__()
-        self.decoder_lin = nn.Sequential(
-            nn.Linear(encoded_space_dim, 128),
-            nn.ReLU(True),
-            nn.Linear(128, 27 * 27 * 128),
-            # nn.Linear(128, 3 * 3 * 32),
-            nn.ReLU(True)
+        self.decoder = nn.Sequential(
+            nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+
+            nn.Upsample(scale_factor=2, mode='nearest'),
+            nn.Conv2d(16, 8, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+
+            nn.Upsample(scale_factor=2, mode='nearest'),
+            nn.Conv2d(8, 3, kernel_size=5, stride=1, padding=2),
+            nn.Sigmoid()
         )
 
-        self.unflatten = nn.Unflatten(dim=1,
-                                      unflattened_size=(128, 27, 27))
-
-        self.decoder_conv = nn.Sequential(
-            nn.ConvTranspose2d(128, 64, 3,
-                               stride=2, padding=0, output_padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(64, 32, 3, stride=2,
-                               padding=1, output_padding=1),
-            # nn.BatchNorm2d(8),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(32, 3, 3, stride=2,
-                               padding=1, output_padding=1)
-        )
 
     def forward(self, x):
-        x = self.decoder_lin(x)
-        x = self.unflatten(x)
-        # print('here')
-        x = self.decoder_conv(x)
-        # print('adf')
-        x = torch.sigmoid(x)
+        x = self.decoder(x)
 
         return x
-
 
 ### Define the loss function
 loss_fn = torch.nn.MSELoss()
@@ -123,12 +101,9 @@ lr = 0.001
 ### Set the random seed for reproducible results
 torch.manual_seed(0)
 
-### Initialize the two networks
-d = 4
-
 # model = Autoencoder(encoded_space_dim=encoded_space_dim)
-encoder = Encoder(encoded_space_dim=d, fc2_input_dim=128)
-decoder = Decoder(encoded_space_dim=d, fc2_input_dim=128)
+encoder = Encoder()
+decoder = Decoder()
 params_to_optimize = [
     {'params': encoder.parameters()},
     {'params': decoder.parameters()}
@@ -151,14 +126,10 @@ def add_noise(tensor, poisson_rate=1.0, gaussian_std_dev=0.5):
     noisy = torch.clip(noisy_tensor, 0., 1.)
     return noisy
 
-# def add_noise(inputs, noise_factor=0.3):
-#     noisy = inputs + torch.randn_like(inputs) * noise_factor
-#     noisy = torch.clip(noisy, 0., 1.)
-#     return noisy
 
 
 ### Training function
-def train_epoch_den(encoder, decoder, device, dataloader, loss_fn, optimizer, noise_factor=0.3):
+def train_epoch_den(encoder, decoder, device, dataloader, loss_fn, optimizer):
     # Set train mode for both the encoder and the decoder
     encoder.train()
     decoder.train()
@@ -166,7 +137,10 @@ def train_epoch_den(encoder, decoder, device, dataloader, loss_fn, optimizer, no
     # Iterate the dataloader (we do not need the label values, this is unsupervised learning)
     for image_batch, _ in dataloader:  # with "_" we just ignore the labels (the second element of the dataloader tuple)
         # Move tensor to the proper device
-        image_noisy = add_noise(image_batch, noise_factor)
+        poisson_rate = random.uniform(0.5, 1.5)
+        gaussian_std_dev = random.uniform(0.1, 0.9)
+
+        image_noisy = add_noise(image_batch, poisson_rate, gaussian_std_dev)
         image_batch = image_batch.to(device)
         image_noisy = image_noisy.to(device)
         # Encode data
@@ -187,7 +161,7 @@ def train_epoch_den(encoder, decoder, device, dataloader, loss_fn, optimizer, no
 
 
 ### Testing function
-def test_epoch_den(encoder, decoder, device, dataloader, loss_fn, noise_factor=0.3):
+def test_epoch_den(encoder, decoder, device, dataloader, loss_fn):
     # Set evaluation mode for encoder and decoder
     encoder.eval()
     decoder.eval()
@@ -196,8 +170,12 @@ def test_epoch_den(encoder, decoder, device, dataloader, loss_fn, noise_factor=0
         conc_out = []
         conc_label = []
         for image_batch, _ in dataloader:
+
+            poisson_rate = random.uniform(0.5, 1.5)
+            gaussian_std_dev = random.uniform(0.1, 0.9)
             # Move tensor to the proper device
-            image_noisy = add_noise(image_batch, noise_factor)
+            image_noisy = add_noise(image_batch, poisson_rate, gaussian_std_dev)
+
             image_noisy = image_noisy.to(device)
             # Encode data
             encoded_data = encoder(image_noisy)
@@ -221,6 +199,7 @@ history_da = {'train_loss': [], 'val_loss': []}
 
 for epoch in range(num_epochs):
     print('EPOCH %d/%d' % (epoch + 1, num_epochs))
+
     ### Training (use the training function)
     train_loss = train_epoch_den(
         encoder=encoder,
@@ -228,16 +207,20 @@ for epoch in range(num_epochs):
         device=device,
         dataloader=train_loader,
         loss_fn=loss_fn,
-        optimizer=optim, noise_factor=noise_factor)
+        optimizer=optim)
     ### Validation (use the testing function)
     val_loss = test_epoch_den(
         encoder=encoder,
         decoder=decoder,
         device=device,
         dataloader=valid_loader,
-        loss_fn=loss_fn, noise_factor=noise_factor)
+        loss_fn=loss_fn)
+
+    # Write train_loss and val_loss to TensorBoard
+    writer.add_scalar('Train Loss', train_loss, epoch)
+    writer.add_scalar('Validation Loss', val_loss, epoch)
     # Print Validationloss
     history_da['train_loss'].append(train_loss)
     history_da['val_loss'].append(val_loss)
-    print('\n EPOCH {}/{} \t train loss {:.3f} \t val loss {:.3f}'.format(epoch + 1, num_epochs, train_loss, val_loss))
+    print('\n EPOCH {}/{} \t train loss {:.5f} \t val loss {:.5f}'.format(epoch + 1, num_epochs, train_loss, val_loss))
 # plot_ae_outputs_den(encoder,decoder,noise_factor=noise_factor)
