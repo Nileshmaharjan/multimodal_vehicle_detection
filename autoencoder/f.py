@@ -188,8 +188,8 @@
 #
 # # Load and plot images from custom dataset
 # load_and_plot_images('path_to_image_directory', num_images=5)
-import visualize_fake
-
-random_float = random.uniform(0.5, 1.5)
-print(random_float)
-
+# import visualize_fake
+#
+# random_float = random.uniform(0.5, 1.5)
+# print(random_float)
+#

@@ -9,4 +9,6 @@ week_57/
 autoencoder/runs/
 autoencoder/runs-lr-0.001-bs-16-epoch-200/
 autoencoder/runs-lr-0.0001-bs-16-model-2-each
+autoencoder/runs-no-improvement
+autoencoder/runs-no-improvement-2
 runs/

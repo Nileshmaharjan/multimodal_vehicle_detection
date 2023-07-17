@@ -14,34 +14,25 @@ import random
 # Set the directory for TensorBoard logs
 log_dir = 'D:/Research/Super/autoencoder/runs/'
 
+
 # Create a SummaryWriter object
 writer = SummaryWriter(log_dir=log_dir)
 
-data_dir = 'dataset'
+data_path = 'D:/Research/Super/dataset/original/VEDAI_1024/images/'
 
 
 train_transform = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    transforms.ToTensor()
 ])
-train_dataset = torchvision.datasets.CIFAR10(root='D:/Research/Super/autoencoder/dataset/', download=True, transform=train_transform)
-# train_dataset = torchvision.datasets.MNIST(data_dir, train=True, download=True)0
-# test_dataset = torchvision.datasets.MNIST(data_dir, train=False, download=True)
+# train_dataset = torchvision.datasets.CIFAR10(root='D:/Research/Super/autoencoder/dataset/', download=True, transform=train_transform)
 
-
-
-# test_transform = transforms.Compose([
-#     transforms.ToTensor(),
-# ])
-#
-# train_dataset.transform = train_transform
-# test_dataset.transform = test_transform
+train_dataset = torchvision.datasets.ImageFolder(root=data_path, transform=train_transform)
 
 m = len(train_dataset)
 print('m',m)
 
-train_data, val_data = random_split(train_dataset, [36000,14000])
-batch_size = 64
+train_data, val_data = random_split(train_dataset, [1901,635])
+batch_size = 4
 
 train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size)
 valid_loader = torch.utils.data.DataLoader(val_data, batch_size=batch_size)
@@ -55,13 +46,15 @@ class Encoder(nn.Module):
 
         ### Convolutional section
         self.encoder = nn.Sequential(
-            nn.Conv2d(3, 8, kernel_size=5, stride=1, padding=2),
+            nn.Conv2d(3, 32, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
-
-            nn.Conv2d(8, 16, kernel_size=3, stride=1, padding=1),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2)
         )
 
 
@@ -74,15 +67,11 @@ class Decoder(nn.Module):
     def __init__(self):
         super().__init__()
         self.decoder = nn.Sequential(
-            nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1),
+            nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2),
             nn.ReLU(),
-
-            nn.Upsample(scale_factor=2, mode='nearest'),
-            nn.Conv2d(16, 8, kernel_size=3, stride=1, padding=1),
+            nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2),
             nn.ReLU(),
-
-            nn.Upsample(scale_factor=2, mode='nearest'),
-            nn.Conv2d(8, 3, kernel_size=5, stride=1, padding=2),
+            nn.ConvTranspose2d(32, 3, kernel_size=2, stride=2),
             nn.Sigmoid()
         )
 
@@ -96,7 +85,7 @@ class Decoder(nn.Module):
 loss_fn = torch.nn.MSELoss()
 
 ### Define an optimizer (both for the encoder and the decoder!)
-lr = 0.001
+lr = 0.0001
 
 ### Set the random seed for reproducible results
 torch.manual_seed(0)
@@ -109,7 +98,7 @@ params_to_optimize = [
     {'params': decoder.parameters()}
 ]
 
-optim = torch.optim.Adam(params_to_optimize, lr=lr, weight_decay=1e-05)
+optim = torch.optim.Adam(params_to_optimize, lr=lr, weight_decay=1e-03)
 
 # Check if the GPU is available
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -119,13 +108,18 @@ print(f'Selected device: {device}')
 encoder.to(device)
 decoder.to(device)
 
-def add_noise(tensor, poisson_rate=1.0, gaussian_std_dev=0.5):
+def add_noise(tensor, poisson_rate, gaussian_std_dev, salt_pepper_prob):
     gaussian_noise = gaussian_std_dev * torch.randn(tensor.size())
     poisson_noise = torch.poisson(torch.full(tensor.size(), poisson_rate))
-    noisy_tensor = tensor + gaussian_noise + poisson_noise
+    noisy_tensor = tensor + gaussian_noise + poisson_noise + salt_pepper_prob
     noisy = torch.clip(noisy_tensor, 0., 1.)
     return noisy
 
+
+def calculate_psnr(img1, img2, data_range=1.0):
+    mse = torch.mean((img1 - img2) ** 2)
+    psnr = 20 * torch.log10(data_range / torch.sqrt(mse))
+    return psnr
 
 
 ### Training function
@@ -139,8 +133,9 @@ def train_epoch_den(encoder, decoder, device, dataloader, loss_fn, optimizer):
         # Move tensor to the proper device
         poisson_rate = random.uniform(0.5, 1.5)
         gaussian_std_dev = random.uniform(0.1, 0.9)
+        salt_pepper_prob = random.uniform(0.01, 0.10)
 
-        image_noisy = add_noise(image_batch, poisson_rate, gaussian_std_dev)
+        image_noisy = add_noise(image_batch, poisson_rate, gaussian_std_dev, salt_pepper_prob)
         image_batch = image_batch.to(device)
         image_noisy = image_noisy.to(device)
         # Encode data
@@ -173,8 +168,11 @@ def test_epoch_den(encoder, decoder, device, dataloader, loss_fn):
 
             poisson_rate = random.uniform(0.5, 1.5)
             gaussian_std_dev = random.uniform(0.1, 0.9)
+            salt_pepper_prob = random.uniform(0.01, 0.10)
+
             # Move tensor to the proper device
-            image_noisy = add_noise(image_batch, poisson_rate, gaussian_std_dev)
+
+            image_noisy = add_noise(image_batch, poisson_rate, gaussian_std_dev, salt_pepper_prob)
 
             image_noisy = image_noisy.to(device)
             # Encode data
@@ -189,12 +187,18 @@ def test_epoch_den(encoder, decoder, device, dataloader, loss_fn):
         conc_label = torch.cat(conc_label)
         # Evaluate global loss
         val_loss = loss_fn(conc_out, conc_label)
+
+        # Calculate PSNR
+        psnr = calculate_psnr(conc_label, conc_out, data_range=1.0)
+
+        # Log PSNR to TensorBoard
+        writer.add_scalar('PSNR', psnr, epoch)
     return val_loss.data
 
 
 ### Training cycle
 noise_factor = 0.3
-num_epochs = 30
+num_epochs = 200
 history_da = {'train_loss': [], 'val_loss': []}
 
 for epoch in range(num_epochs):
