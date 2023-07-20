@@ -946,12 +946,52 @@ class LoadImagesAndLabels_sr(Dataset):  # for training/testing
         return torch.stack(img4, 0),torch.stack(ir4, 0), torch.cat(label4, 0), path4, shapes4
 
 # Ancillary functions --------------------------------------------------------------------------------------------------
+
+
+def add_noise(image, poisson_rate, gaussian_std_dev):
+    # Convert the image to NumPy array
+    noisy_np = image.numpy()
+
+    # Add Gaussian noise
+    gaussian_noise = np.random.normal(scale=gaussian_std_dev, size=noisy_np.shape)
+    noisy_np += gaussian_noise
+
+    # # Add Poisson noise
+    poisson_noise = np.random.poisson(lam=poisson_rate, size=noisy_np.shape)
+    noisy_np += poisson_noise
+
+    # Clip values to [0, 255] range
+    noisy_np = np.clip(noisy_np, 0, 255)
+
+    # Convert NumPy array back to tensor
+    noisy_image = torch.from_numpy(noisy_np)
+
+    return noisy_image
+
 def load_image(self, index):
     # loads 1 image from dataset, returns img, original hw, resized hw
     img = self.imgs[index]
     if img is None:  # not cached
         path = self.img_files[index]
         img = cv2.imread(path)  # BGR
+
+        # Add poisson and gaussian noise
+
+        # Convert the BGR image to RGB
+        image_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        # Convert the image to a PyTorch tensor
+        image_tensor = torch.from_numpy(image_rgb.transpose((2, 0, 1))).float() / 255.0
+
+        # Add noise to the image
+        poisson_rate = random.uniform(0.1, 0.2)
+        gaussian_std_dev = random.uniform(0.01, 0.05)
+
+        noisy_image_tensor = add_noise(image_tensor, poisson_rate, gaussian_std_dev)
+
+        # Convert the noisy image back to a NumPy array for visualization
+        img = (noisy_image_tensor.permute(1, 2, 0).numpy() * 255).astype(np.uint8)
+
         assert img is not None, 'Image Not Found ' + path
         h0, w0 = img.shape[:2]  # orig hw
         r = self.img_size / max(h0, w0)  # resize image to img_size
@@ -968,6 +1008,21 @@ def load_ir(self, index): #zjq
     if ir is None:  # not cached
         path = self.ir_files[index]
         ir = cv2.imread(path)  # BGR
+
+        # Add noise
+
+        # Convert the image to a PyTorch tensor
+        image_tensor = torch.from_numpy(ir.transpose((2, 0, 1))).float() / 255.0
+
+        # Add noise to the image
+        poisson_rate = random.uniform(0.1, 0.2)
+        gaussian_std_dev = random.uniform(0.01, 0.05)
+
+        noisy_image_tensor = add_noise(image_tensor, poisson_rate, gaussian_std_dev)
+
+        # Convert the noisy image back to a NumPy array for visualization
+        ir = (noisy_image_tensor.permute(1, 2, 0).numpy() * 255).astype(np.uint8)
+
         assert ir is not None, 'Image_ir Not Found ' + path
         h0, w0 = ir.shape[:2]  # orig hw
         r = self.img_size / max(h0, w0)  # resize image to img_size
