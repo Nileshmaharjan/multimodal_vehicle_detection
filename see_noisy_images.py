@@ -11,12 +11,19 @@ import numpy as np
 from scipy.ndimage import gaussian_filter
 import random
 
+def unnormalize(image, mean, std):
+    # Convert mean and std to NumPy arrays
+    mean_np = mean.numpy()
+    std_np = std.numpy()
 
+    # Unnormalize the image by multiplying with the standard deviation and adding the mean
+    unnormalized_image = image * std_np + mean_np
+    return unnormalized_image
 
-def add_noise(tensor, poisson_rate, gaussian_std_dev, salt_pepper_prob):
+def add_noise(tensor, poisson_rate, gaussian_std_dev):
     gaussian_noise = gaussian_std_dev * torch.randn(tensor.size())
     poisson_noise = torch.poisson(torch.full(tensor.size(), poisson_rate))
-    noisy_tensor = tensor + gaussian_noise + poisson_noise + salt_pepper_prob
+    noisy_tensor = tensor + gaussian_noise + poisson_noise
     return noisy_tensor
 
 def plot_images(original_images, noisy_images):
@@ -47,8 +54,9 @@ def plot_images(original_images, noisy_images):
 # Load and plot original and noisy images
 def load_and_plot_images(data_path, num_images=5):
     transform = transforms.Compose([
+        transforms.Resize((128, 128)),
         transforms.ToTensor(),
-        # transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
     ])
 
     # train_dataset = torchvision.datasets.CIFAR10(root='D:/Research/Super/autoencoder/dataset/', download=True,
@@ -58,16 +66,67 @@ def load_and_plot_images(data_path, num_images=5):
 
     original_images = torch.stack([custom_dataset[idx][0] for idx in indices], dim=0)
 
+    poisson_rate = random.uniform(0.01, 0.02)
+    gaussian_std_dev = random.uniform(0.01, 0.02)
+    noisy_images = add_noise(original_images, poisson_rate, gaussian_std_dev)
 
-    poisson_rate = random.uniform(0.5, 1.5)
-    gaussian_std_dev = random.uniform(0.1, 0.9)
-    salt_pepper_prob = random.uniform(0.01, 0.10)
-    noisy_images = add_noise(original_images, poisson_rate, gaussian_std_dev,salt_pepper_prob)
-
-    # noisy_images = original_images + 0.2 * torch.randn(original_images.size())
-
+    # Plot unnormalized images
+    # mean = torch.tensor([0.485, 0.456, 0.406])
+    # std = torch.tensor([0.229, 0.224, 0.225])
     plot_images(original_images, noisy_images)
 
 
 # Load and plot images from custom dataset
-load_and_plot_images('D:/Research/Super/dataset/original/VEDAI_1024/New folder/', num_images=5)
+load_and_plot_images( r"C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/images/coco/", num_images=5)
+
+
+import torch
+import torch.nn as nn
+
+
+# class Autoencoder(nn.Module):
+#     def __init__(self):
+#         super(Autoencoder, self).__init__()
+#
+#         # Encoder
+#         self.encoder = nn.Sequential(
+#             nn.Conv2d(3, 32, kernel_size=3, padding=1),
+#             nn.ReLU(),
+#             nn.Conv2d(32, 32, kernel_size=3, padding=1),
+#             nn.ReLU(),
+#             nn.MaxPool2d(kernel_size=2, stride=2),
+#             nn.Conv2d(32, 64, kernel_size=3, padding=1),
+#             nn.ReLU(),
+#             nn.Conv2d(64, 64, kernel_size=3, padding=1),
+#             nn.ReLU(),
+#             nn.MaxPool2d(kernel_size=2, stride=2),
+#             nn.Conv2d(64, 128, kernel_size=3, padding=1),
+#             nn.ReLU(),
+#             nn.Conv2d(128, 128, kernel_size=3, padding=1),
+#             nn.ReLU(),
+#             nn.MaxPool2d(kernel_size=2, stride=2)
+#         )
+#
+#         # Decoder
+#         self.decoder = nn.Sequential(
+#             nn.ConvTranspose2d(128, 128, kernel_size=2, stride=2),
+#             nn.ReLU(),
+#             nn.Conv2d(128, 64, kernel_size=3, padding=1),
+#             nn.ReLU(),
+#             nn.ConvTranspose2d(64, 64, kernel_size=2, stride=2),
+#             nn.ReLU(),
+#             nn.Conv2d(64, 32, kernel_size=3, padding=1),
+#             nn.ReLU(),
+#             nn.ConvTranspose2d(32, 32, kernel_size=2, stride=2),
+#             nn.ReLU(),
+#             nn.Conv2d(32, 3, kernel_size=3, padding=1),
+#             nn.Sigmoid()
+#         )
+#
+#     def forward(self, x):
+#         # Encode data
+#         x1 = self.encoder(x)
+#
+#         # Decode data with skip connections
+#         x2 = self.decoder(x1)
+#         return x2
