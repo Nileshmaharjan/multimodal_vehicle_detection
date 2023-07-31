@@ -740,7 +740,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
 class LoadImagesAndLabels_sr(Dataset):  # for training/testing
     def __init__(self, path, img_size=640, batch_size=16, augment=False, hyp=None, rect=False, image_weights=False,
-                 cache_images=False, single_cls=False, stride=32, pad=0.0, prefix=''):
+                 cache_images=False, single_cls=False, stride=32, pad=0.0, prefix='', denoise=True):
         self.img_size = img_size
         self.augment = augment
         self.hyp = hyp
@@ -749,6 +749,7 @@ class LoadImagesAndLabels_sr(Dataset):  # for training/testing
         self.mosaic = self.augment and not self.rect  # load 4 images at a time into a mosaic (only during training)
         self.mosaic_border = [-img_size // 2, -img_size // 2]
         self.stride = stride
+        self.denoise = denoise
 
         with open(path, "r") as file:
             self.img_files = file.readlines()
@@ -900,12 +901,6 @@ class LoadImagesAndLabels_sr(Dataset):  # for training/testing
     def __len__(self):
         return len(self.img_files)
 
-    # def __iter__(self):
-    #     self.count = -1
-    #     print('ran dataset iter')
-    #     #self.shuffled_vector = np.random.permutation(self.nF) if self.augment else np.arange(self.nF)
-    #     return self
-
     def __getitem__(self, index):
 
         # Define the path to the saved checkpoint
@@ -995,11 +990,95 @@ class LoadImagesAndLabels_sr(Dataset):  # for training/testing
         if nL:
             labels_out[:, 1:] = torch.from_numpy(labels)
 
+
+
         # Convert
         img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
         img = np.ascontiguousarray(img)
         ir = ir[:, :, ::-1].transpose(2, 0, 1)
-        ir = np.ascontiguousarray(ir) #zjq ascontiguousarray函数将一个内存不连续存储的数组转换为内存连续存储的数组，使得运行速度更快
+        ir = np.ascontiguousarray(ir)#zjq ascontiguousarray function converts an array with discontinuous memory storage into an array with continuous memory storage, making the operation faster
+
+        # plot only
+
+        # Convert back to the original format (HxWx3) for visualization using OpenCV
+        img_bgr = cv2.cvtColor(img.transpose(1, 2, 0), cv2.COLOR_RGB2BGR)
+        ir_bgr = cv2.cvtColor(ir.transpose(1, 2, 0), cv2.COLOR_RGB2BGR)
+
+        # Now you can plot the images using Matplotlib
+        plt.figure(figsize=(10, 5))
+        plt.subplot(1, 2, 1)
+        plt.imshow(img_bgr)
+        plt.title('RGB Image')
+        plt.axis('off')
+
+        plt.subplot(1, 2, 2)
+        plt.imshow(ir_bgr)
+        plt.title('Infrared Image')
+        plt.axis('off')
+
+        # Save the plot as an image file (e.g., PNG or JPEG)
+        plt.savefig('rgb_ir.png', bbox_inches='tight', pad_inches=0.1)
+        #plot ends
+
+        if self.denoise:  # Perform denoising
+            # Convert NumPy images to PyTorch tensors
+            img_tensor = torch.from_numpy(img).float() / 255.0
+            ir_tensor = torch.from_numpy(ir).float() / 255.0
+
+            # Unsqueeze to add a batch dimension
+            img_tensor = img_tensor.unsqueeze(0)  # Adds a dimension at index 0
+            ir_tensor = ir_tensor.unsqueeze(0)  # Adds a dimension at index 0
+
+            # Reshape the tensors to have a shape of (batch_size, channel, 256, 256)
+            img_tensor_reshape = img_tensor.reshape(-1, 3, 256, 256)
+            ir_tensor_reshape = ir_tensor.reshape(-1, 3, 256, 256)
+
+            try:
+                img_tensor_reshape_2 = img_tensor_reshape.to(device)
+                # If the tensor is successfully moved to the device, 'to(device)' will not raise an exception.
+            except Exception as e:
+                print("An exception occurred during resizing tensor to device:", e)
+
+            print('here')
+
+            # Denoise the RGB image using the denoising model
+            with torch.no_grad():
+                img_denoised_tensor = denoising_model(img_tensor_reshape_2).cpu()
+                img_denoised_tensor = img_denoised_tensor.cpu()
+
+            # Denoise the IR image using the denoising model
+            with torch.no_grad():
+                ir_denoised_tensor = denoising_model(ir_tensor_reshape.to(device)).cpu()
+
+            # Convert the denoised image tensors back to NumPy arrays
+            img_denoised = img_denoised_tensor.squeeze().numpy() * 255.0
+            ir_denoised = ir_denoised_tensor.squeeze().numpy() * 255.0
+
+            print('denoised')
+
+            img_denoised = img_denoised.transpose(0, 2, 3, 1)  # Move the batch dimension to the last axis
+            img_denoised = cv2.cvtColor(img_denoised[0], cv2.COLOR_RGB2BGR)
+
+            # # Convert the denoised IR image to BGR format for compatibility with OpenCV
+            # ir_denoised = cv2.cvtColor(ir_denoised.astype(np.uint8).transpose(1, 2, 0), cv2.COLOR_RGB2BGR)
+
+            # Now you can plot the images using Matplotlib
+            plt.figure(figsize=(10, 5))
+            plt.subplot(1, 2, 1)
+            plt.imshow(img_denoised)
+            plt.title('RGB Image')
+            plt.axis('off')
+
+            plt.subplot(1, 2, 2)
+            plt.imshow(img_denoised, cmap='gray')
+            plt.title('RGB Image')
+            plt.axis('off')
+
+            # Save the plot as an image file (e.g., PNG or JPEG)
+            plt.savefig('denoised.png', bbox_inches='tight', pad_inches=0.1)
+            # ...
+
+        return img, ir, labels, shapes, img_denoised, ir_denoised
 
         return torch.from_numpy(img), torch.from_numpy(ir), labels_out, self.img_files[index], shapes
 
@@ -1049,105 +1128,38 @@ def add_noise(tensor, poisson_rate, gaussian_std_dev):
     noisy = torch.clip(noisy_tensor, 0., 1.)
     return noisy
 
-def load_image(self, index, denoising_model, device):
+def load_image(self, index,  denoising_model, device):
     # loads 1 image from dataset, returns img, original hw, resized hw
+
     img = self.imgs[index]
     if img is None:  # not cached
         path = self.img_files[index]
         img = cv2.imread(path)  # BGR
 
+        # Add poisson and gaussian noise
+
+        # Convert the BGR image to RGB
+        image_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         # Convert the image to a PyTorch tensor
-        image_tensor = torch.from_numpy(img.transpose((2, 0, 1))).float() / 255.0
-        resized_image_tensor = F.interpolate(image_tensor.unsqueeze(0), size=(256, 256), mode="bilinear", align_corners=False).squeeze(0)
+        image_tensor = torch.from_numpy(image_rgb.transpose((2, 0, 1))).float() / 255.0
 
-        # for plot only
-        # Convert the resized_image_tensor to a NumPy array and rescale it to [0, 255]
-        resized_image_np = (resized_image_tensor.numpy() * 255).astype(np.uint8)
-
-        # Convert from BGR to RGB (Matplotlib expects RGB format)
-        resized_image_rgb = cv2.cvtColor(resized_image_np.transpose(1, 2, 0), cv2.COLOR_BGR2RGB)
-
-        # Display the 'resized_image_rgb' using Matplotlib
-        plt.imshow(resized_image_rgb)
-        plt.title('Resized  Image Tensor')
-        plt.axis('off')
-        plt.savefig("resized.png")
-        print('here1')
-
-        ## plot end
-
-        # Add noise
-        poisson_rate = random.uniform(0.01, 0.02)
+        # Add noise to the image
+        poisson_rate = random.uniform(0.1, 0.2)
         gaussian_std_dev = random.uniform(0.01, 0.05)
 
-        noisy_image_tensor = add_noise(resized_image_tensor, poisson_rate, gaussian_std_dev)
+        noisy_image_tensor = add_noise(image_tensor, poisson_rate, gaussian_std_dev)
 
-        # for plot only
-        # Convert the resized_image_tensor to a NumPy array and rescale it to [0, 255]
-        noisy_image_tensor_np = (noisy_image_tensor.numpy() * 255).astype(np.uint8)
-
-        # Convert from BGR to RGB (Matplotlib expects RGB format)
-        noisy_image_tensor_rgb = cv2.cvtColor(noisy_image_tensor_np.transpose(1, 2, 0), cv2.COLOR_BGR2RGB)
-
-        # Display the 'reshaped_denoised_image' using Matplotlib
-        plt.imshow(noisy_image_tensor_rgb)
-        plt.title('Noisy Image Tensor')
-        plt.axis('off')
-        plt.savefig("noisy.png")
-        print('here2')
-
-        ## plot end
-
-        try:
-            noisy_image_tensor = noisy_image_tensor.to(device)
-            noisy_image_tensor = noisy_image_tensor.unsqueeze(0)
-            # If the tensor is successfully moved to the device, 'to(device)' will not raise an exception.
-        except Exception as e:
-            print("An exception occurred during resizing tensor to device:", e)
-            # You can handle the exception here, such as using the CPU device instead or raising an error.
-
-        # Denoise the image using the provided denoising_model
-        with torch.no_grad():
-            denoised_image_tensor = denoising_model(noisy_image_tensor)
-
-
-        # Move 'denoised_image_tensor' from GPU to CPU
-        denoised_image_tensor_cpu = denoised_image_tensor.cpu()
-
-        # Convert the denoised image tensor to a NumPy array for visualization
-        denoised_image = (denoised_image_tensor_cpu.squeeze().clamp(0.0, 1.0).permute(1, 2, 0).numpy() * 255).astype(
-            np.uint8)
-
-
-        # # for plot only
-        # print('here')
-        # # Convert from BGR to RGB (Matplotlib expects RGB format)
-        # denoised_image_tensorr_rgb = cv2.cvtColor(denoised_image, cv2.COLOR_BGR2RGB)
-
-        plt.imshow(denoised_image)
-        plt.title('Denoised Image Tensor')
-        plt.axis('off')
-        plt.savefig("denoised.png")
-        print('here3')
-
-        # # Resize the 'denoised_image' back to (1024, 1024, 3)
-        # reshaped_denoised_image = cv2.resize(denoised_image, (img.shape[0], img.shape[1]), interpolation=cv2.INTER_LINEAR)
-        #
-        # plt.imshow(img)
-        # plt.title('Reshaped Denoised Image Tensor')
-        # plt.axis('off')
-        # plt.savefig("reshaped_denoised.png")
-        # print('here4')
+        # Convert the noisy image back to a NumPy array for visualization
+        img = (noisy_image_tensor.permute(1, 2, 0).numpy() * 255).astype(np.uint8)
 
         assert img is not None, 'Image Not Found ' + path
         h0, w0 = img.shape[:2]  # orig hw
         r = self.img_size / max(h0, w0)  # resize image to img_size
         if r != 1:  # always resize down, only resize up if training with augmentation
             interp = cv2.INTER_AREA if r < 1 and not self.augment else cv2.INTER_LINEAR
-            denoised_image = cv2.resize(denoised_image, (int(w0 * r), int(h0 * r)), interpolation=interp)
-
-        return denoised_image, (h0, w0), img.shape[:2]  # img, hw_original, hw_resized
+            img = cv2.resize(img, (int(w0 * r), int(h0 * r)), interpolation=interp)
+        return img, (h0, w0), img.shape[:2]  # img, hw_original, hw_resized
     else:
         return self.imgs[index], self.img_hw0[index], self.img_hw[index]  # img, hw_original, hw_resized
 
@@ -1158,44 +1170,27 @@ def load_ir(self, index, denoising_model, device): #zjq
         path = self.ir_files[index]
         ir = cv2.imread(path)  # BGR
 
+        # Add noise
+
         # Convert the image to a PyTorch tensor
         image_tensor = torch.from_numpy(ir.transpose((2, 0, 1))).float() / 255.0
-        resized_image_tensor = F.interpolate(image_tensor.unsqueeze(0), size=(256, 256), mode="bilinear", align_corners=False).squeeze(0)
 
-        # Add noise
+        # Add noise to the image
         poisson_rate = random.uniform(0.1, 0.2)
-        gaussian_std_dev = random.uniform(0.1, 0.2)
+        gaussian_std_dev = random.uniform(0.01, 0.05)
 
-        noisy_image_tensor = add_noise(resized_image_tensor, poisson_rate, gaussian_std_dev)
-        try:
-            noisy_image_tensor = noisy_image_tensor.to(device)
-            # If the tensor is successfully moved to the device, 'to(device)' will not raise an exception.
-        except Exception as e:
-            print("An exception occurred during resizing tensor to device:", e)
-            # You can handle the exception here, such as using the CPU device instead or raising an error.
+        noisy_image_tensor = add_noise(image_tensor, poisson_rate, gaussian_std_dev)
 
-        # Denoise the image using the provided denoising_model
-        with torch.no_grad():
-            denoised_image_tensor = denoising_model(noisy_image_tensor.unsqueeze(0))
-
-        # Move 'denoised_image_tensor' from GPU to CPU
-        denoised_image_tensor_cpu = denoised_image_tensor.cpu()
-
-        # Convert the denoised image tensor to a NumPy array for visualization
-        denoised_image = (denoised_image_tensor_cpu.squeeze().clamp(0.0, 1.0).permute(1, 2, 0).numpy() * 255).astype(
-            np.uint8)
-
-        # Resize the 'denoised_image' back to (1024, 1024, 3)
-        reshaped_denoised_image = cv2.resize(denoised_image, (1024, 1024), interpolation=cv2.INTER_LINEAR)
-
+        # Convert the noisy image back to a NumPy array for visualization
+        ir = (noisy_image_tensor.permute(1, 2, 0).numpy() * 255).astype(np.uint8)
 
         assert ir is not None, 'Image_ir Not Found ' + path
         h0, w0 = ir.shape[:2]  # orig hw
         r = self.img_size / max(h0, w0)  # resize image to img_size
         if r != 1:  # always resize down, only resize up if training with augmentation
             interp = cv2.INTER_AREA if r < 1 and not self.augment else cv2.INTER_LINEAR
-            reshaped_denoised_image  = cv2.resize(reshaped_denoised_image, (int(w0 * r), int(h0 * r)), interpolation=interp)
-        return reshaped_denoised_image    # denoised_image   ##, hw_original, hw_resized
+            ir = cv2.resize(ir, (int(w0 * r), int(h0 * r)), interpolation=interp)
+        return ir  # ir ##, hw_original, hw_resized
     else:
         return self.irs[index]  # img ##, hw_original, hw_resized
 
