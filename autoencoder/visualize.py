@@ -8,6 +8,7 @@ from torch.autograd import Variable
 
 # Define the path to the saved checkpoint
 checkpoint_path = "C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/checkpoint-unormalized-coo/model_checkpoint_epoch_28.pt"
+# checkpoint_path = "C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/checkpoint-unormalized-coo/model_checkpoint_epoch_28.pt"
 
 # Define the transformation for the test data
 test_transform = transforms.Compose([
@@ -31,6 +32,7 @@ import torch
 import torch.nn.functional as F
 import torch.nn as nn
 import configs.models_config as config
+import cv2
 
 
 class Autoencoder(nn.Module):
@@ -119,18 +121,24 @@ def add_noise(tensor, poisson_rate, gaussian_std_dev):
     return noisy
 
 # Function to display the original, noisy, and denoised images
+
+def resize_image(image, target_size):
+    return cv2.resize(image, (1024, 1024), interpolation=cv2.INTER_LINEAR)
 def visualize_denoised_images(original, noisy, denoised, num_images=6):
     fig, axes = plt.subplots(num_images, 3, figsize=(10, 3*num_images))
     for i in range(num_images):
-        axes[i, 0].imshow(noisy[i].permute(1, 2, 0))
+        resized_noisy = resize_image(noisy[i].permute(1, 2, 0).numpy(), (1024, 1024))
+        axes[i, 0].imshow(resized_noisy)
         axes[i, 0].set_title('Input Image')
         axes[i, 0].axis('off')
 
-        axes[i, 1].imshow(original[i].permute(1, 2, 0))
+        resized_original = resize_image(original[i].permute(1, 2, 0).numpy(), (1024, 1024))
+        axes[i, 1].imshow(resized_original)
         axes[i, 1].set_title('Ground Truth')
         axes[i, 1].axis('off')
 
-        axes[i, 2].imshow(denoised[i].permute(1, 2, 0))
+        resized_denoised = resize_image(denoised[i].permute(1, 2, 0).numpy(), (1024, 1024))
+        axes[i, 2].imshow(resized_denoised)
         axes[i, 2].set_title('Denoised')
         axes[i, 2].axis('off')
 
@@ -145,11 +153,12 @@ poisson_rate = 0.1
 gaussian_std_dev = 0.05
 noisy_images = add_noise(test_images, poisson_rate, gaussian_std_dev)
 noisy_images = noisy_images.to(device)
-print('noisy images')
+print('here')
 
 # Apply the denoiser model to the noisy images
 with torch.no_grad():
     denoised_images = autoencoder(noisy_images)
+    print('here')
 
 # Visualize the original, noisy, and denoised images
 visualize_denoised_images(test_images, noisy_images.cpu(), denoised_images.cpu())

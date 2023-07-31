@@ -11,6 +11,7 @@ from itertools import repeat
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from threading import Thread
+import matplotlib.pyplot as plt
 
 import cv2
 import numpy as np
@@ -589,7 +590,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             pbar.desc = f"{prefix}Scanning '{path.parent / path.stem}' for images and labels... " \
                         f"{nf} found, {nm} missing, {ne} empty, {nc} corrupted"
 
-        print('Training ******************************************* from here')
         if nf == 0:
             print(f'{prefix}WARNING: No labels found in {path}. See {help_url}')
 
@@ -833,8 +833,7 @@ class LoadImagesAndLabels_sr(Dataset):  # for training/testing
                 pbar.desc = f'{prefix}Caching images ({gb / 1E9:.1f}GB)'
 
         # Define the path to the saved checkpoint
-        checkpoint_path = "C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/checkpoint" \
-                          "-unormalized-coo/model_checkpoint_epoch_28.pt "
+        checkpoint_path = "C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/checkpoint-unormalized-coo/model_checkpoint_epoch_28.pt "
 
         # Load the saved checkpoint
         device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -849,7 +848,6 @@ class LoadImagesAndLabels_sr(Dataset):  # for training/testing
 
         self.device = device
         self.denoising_autoencoder = autoencoder
-        print('Autoencoder loaded just once')
 
     def cache_labels(self, path=Path('./labels.cache'), prefix=''):
         # Cache dataset labels, check images and read shapes
@@ -934,8 +932,8 @@ class LoadImagesAndLabels_sr(Dataset):  # for training/testing
 
         else:
             # Load image
-            img, (h0, w0), (h, w) = load_image(self, index)
-            ir = load_ir(self, index) #zjq
+            img, (h0, w0), (h, w) = load_image(self, index, denoising_model, device)
+            ir = load_ir(self, index,  denoising_model, device) #zjq
 
             # Letterbox
             shape = self.batch_shapes[self.batch[index]] if self.rect else self.img_size  # final letterboxed shape
@@ -1051,19 +1049,105 @@ def add_noise(tensor, poisson_rate, gaussian_std_dev):
     noisy = torch.clip(noisy_tensor, 0., 1.)
     return noisy
 
-def load_image(self, index):
+def load_image(self, index, denoising_model, device):
     # loads 1 image from dataset, returns img, original hw, resized hw
     img = self.imgs[index]
     if img is None:  # not cached
         path = self.img_files[index]
         img = cv2.imread(path)  # BGR
+
+
+        # Convert the image to a PyTorch tensor
+        image_tensor = torch.from_numpy(img.transpose((2, 0, 1))).float() / 255.0
+        resized_image_tensor = F.interpolate(image_tensor.unsqueeze(0), size=(256, 256), mode="bilinear", align_corners=False).squeeze(0)
+
+        # for plot only
+        # Convert the resized_image_tensor to a NumPy array and rescale it to [0, 255]
+        resized_image_np = (resized_image_tensor.numpy() * 255).astype(np.uint8)
+
+        # Convert from BGR to RGB (Matplotlib expects RGB format)
+        resized_image_rgb = cv2.cvtColor(resized_image_np.transpose(1, 2, 0), cv2.COLOR_BGR2RGB)
+
+        # Display the 'resized_image_rgb' using Matplotlib
+        plt.imshow(resized_image_rgb)
+        plt.title('Resized  Image Tensor')
+        plt.axis('off')
+        plt.savefig("resized.png")
+        print('here1')
+
+        ## plot end
+
+        # Add noise
+        poisson_rate = random.uniform(0.01, 0.02)
+        gaussian_std_dev = random.uniform(0.01, 0.05)
+
+        noisy_image_tensor = add_noise(resized_image_tensor, poisson_rate, gaussian_std_dev)
+
+        # for plot only
+        # Convert the resized_image_tensor to a NumPy array and rescale it to [0, 255]
+        noisy_image_tensor_np = (noisy_image_tensor.numpy() * 255).astype(np.uint8)
+
+        # Convert from BGR to RGB (Matplotlib expects RGB format)
+        noisy_image_tensor_rgb = cv2.cvtColor(noisy_image_tensor_np.transpose(1, 2, 0), cv2.COLOR_BGR2RGB)
+
+        # Display the 'reshaped_denoised_image' using Matplotlib
+        plt.imshow(noisy_image_tensor_rgb)
+        plt.title('Noisy Image Tensor')
+        plt.axis('off')
+        plt.savefig("noisy.png")
+        print('here2')
+
+        ## plot end
+
+        try:
+            noisy_image_tensor = noisy_image_tensor.to(device)
+            noisy_image_tensor = noisy_image_tensor.unsqueeze(0)
+            # If the tensor is successfully moved to the device, 'to(device)' will not raise an exception.
+        except Exception as e:
+            print("An exception occurred during resizing tensor to device:", e)
+            # You can handle the exception here, such as using the CPU device instead or raising an error.
+
+        # Denoise the image using the provided denoising_model
+        with torch.no_grad():
+            denoised_image_tensor = denoising_model(noisy_image_tensor)
+
+
+        # Move 'denoised_image_tensor' from GPU to CPU
+        denoised_image_tensor_cpu = denoised_image_tensor.cpu()
+
+        # Convert the denoised image tensor to a NumPy array for visualization
+        denoised_image = (denoised_image_tensor_cpu.squeeze().clamp(0.0, 1.0).permute(1, 2, 0).numpy() * 255).astype(
+            np.uint8)
+
+
+        # # for plot only
+        # print('here')
+        # # Convert from BGR to RGB (Matplotlib expects RGB format)
+        # denoised_image_tensorr_rgb = cv2.cvtColor(denoised_image, cv2.COLOR_BGR2RGB)
+
+        plt.imshow(denoised_image)
+        plt.title('Denoised Image Tensor')
+        plt.axis('off')
+        plt.savefig("denoised.png")
+        print('here3')
+
+        # # Resize the 'denoised_image' back to (1024, 1024, 3)
+        # reshaped_denoised_image = cv2.resize(denoised_image, (img.shape[0], img.shape[1]), interpolation=cv2.INTER_LINEAR)
+        #
+        # plt.imshow(img)
+        # plt.title('Reshaped Denoised Image Tensor')
+        # plt.axis('off')
+        # plt.savefig("reshaped_denoised.png")
+        # print('here4')
+
         assert img is not None, 'Image Not Found ' + path
         h0, w0 = img.shape[:2]  # orig hw
         r = self.img_size / max(h0, w0)  # resize image to img_size
         if r != 1:  # always resize down, only resize up if training with augmentation
             interp = cv2.INTER_AREA if r < 1 and not self.augment else cv2.INTER_LINEAR
-            img = cv2.resize(img, (int(w0 * r), int(h0 * r)), interpolation=interp)
-        return img, (h0, w0), img.shape[:2]  # img, hw_original, hw_resized
+            denoised_image = cv2.resize(denoised_image, (int(w0 * r), int(h0 * r)), interpolation=interp)
+
+        return denoised_image, (h0, w0), img.shape[:2]  # img, hw_original, hw_resized
     else:
         return self.imgs[index], self.img_hw0[index], self.img_hw[index]  # img, hw_original, hw_resized
 
@@ -1075,11 +1159,8 @@ def load_ir(self, index, denoising_model, device): #zjq
         ir = cv2.imread(path)  # BGR
 
         # Convert the image to a PyTorch tensor
-        image_tensor = torch.from_numpy(ir.transpose((2, 0, 1))).float()
+        image_tensor = torch.from_numpy(ir.transpose((2, 0, 1))).float() / 255.0
         resized_image_tensor = F.interpolate(image_tensor.unsqueeze(0), size=(256, 256), mode="bilinear", align_corners=False).squeeze(0)
-        # Convert 'resized_image_tensor' to a complex tensor
-        # complex_resized_image_tensor = torch.complex(resized_image_tensor, torch.zeros_like(resized_image_tensor))
-
 
         # Add noise
         poisson_rate = random.uniform(0.1, 0.2)
@@ -1093,22 +1174,19 @@ def load_ir(self, index, denoising_model, device): #zjq
             print("An exception occurred during resizing tensor to device:", e)
             # You can handle the exception here, such as using the CPU device instead or raising an error.
 
-
-
-        print('Denoising model is here to stay')
         # Denoise the image using the provided denoising_model
         with torch.no_grad():
-            print('2', noisy_image_tensor)
             denoised_image_tensor = denoising_model(noisy_image_tensor.unsqueeze(0))
 
         # Move 'denoised_image_tensor' from GPU to CPU
         denoised_image_tensor_cpu = denoised_image_tensor.cpu()
 
         # Convert the denoised image tensor to a NumPy array for visualization
-        denoised_image = (denoised_image_tensor_cpu.squeeze().clamp(0.0, 1.0).permute(1, 2, 0).numpy()).astype(
+        denoised_image = (denoised_image_tensor_cpu.squeeze().clamp(0.0, 1.0).permute(1, 2, 0).numpy() * 255).astype(
             np.uint8)
 
-        print('denoi', denoised_image)
+        # Resize the 'denoised_image' back to (1024, 1024, 3)
+        reshaped_denoised_image = cv2.resize(denoised_image, (1024, 1024), interpolation=cv2.INTER_LINEAR)
 
 
         assert ir is not None, 'Image_ir Not Found ' + path
@@ -1116,12 +1194,10 @@ def load_ir(self, index, denoising_model, device): #zjq
         r = self.img_size / max(h0, w0)  # resize image to img_size
         if r != 1:  # always resize down, only resize up if training with augmentation
             interp = cv2.INTER_AREA if r < 1 and not self.augment else cv2.INTER_LINEAR
-            denoised_image  = cv2.resize(denoised_image, (int(w0 * r), int(h0 * r)), interpolation=interp)
-        return denoised_image    # denoised_image   ##, hw_original, hw_resized
+            reshaped_denoised_image  = cv2.resize(reshaped_denoised_image, (int(w0 * r), int(h0 * r)), interpolation=interp)
+        return reshaped_denoised_image    # denoised_image   ##, hw_original, hw_resized
     else:
         return self.irs[index]  # img ##, hw_original, hw_resized
-
-
 
 def augment_hsv(img, hgain=0.5, sgain=0.5, vgain=0.5):
     r = np.random.uniform(-1, 1, 3) * [hgain, sgain, vgain] + 1  # random gains
@@ -1151,7 +1227,7 @@ def load_mosaic(self, index, denoising_model, device): #拼接图像
     indices = [index] + [self.indices[random.randint(0, self.n - 1)] for _ in range(3)]  # 3 additional image indices
     for i, index in enumerate(indices):
         # Load image
-        img, _, (h, w) = load_image(self, index)
+        img, _, (h, w) = load_image(self, index, denoising_model, device)
         ir = load_ir(self, index, denoising_model, device) #zjq
 
         # place img in img4
