@@ -23,12 +23,84 @@ from tqdm import tqdm
 
 from utils.general import xyxy2xywh, xywh2xyxy, clean_str
 from utils.torch_utils import torch_distributed_zero_first
+import torch
+import torch.nn as nn
 
 # Parameters
 help_url = 'https://github.com/ultralytics/yolov3/wiki/Train-Custom-Data'
 img_formats = ['bmp', 'jpg', 'jpeg', 'png', 'tif', 'tiff', 'dng']  # acceptable image suffixes
 vid_formats = ['mov', 'avi', 'mp4', 'mpg', 'mpeg', 'm4v', 'wmv', 'mkv']  # acceptable video suffixes
 logger = logging.getLogger(__name__)
+
+class Autoencoder(nn.Module):
+    def __init__(self):
+        super(Autoencoder, self).__init__()
+        # Encoder
+        self.conv1 = nn.Conv2d(3, 48, kernel_size=3, padding=1)
+        self.conv1b = nn.Conv2d(48, 48, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(48, 48, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(48, 48, kernel_size=3, padding=1)
+        self.conv4 = nn.Conv2d(48, 48, kernel_size=3, padding=1)
+        self.conv5a = nn.Conv2d(48, 48, kernel_size=3, padding=1)
+        self.conv5b = nn.Conv2d(48, 48, kernel_size=3, padding=1)
+
+        # Decoder
+        self.conv6a = nn.Conv2d(96, 96, kernel_size=3, padding=1)
+        self.conv6b = nn.Conv2d(96, 96, kernel_size=3, padding=1)
+        self.conv7a = nn.Conv2d(144, 96, kernel_size=3, padding=1)
+        self.conv7b = nn.Conv2d(96, 96, kernel_size=3, padding=1)
+        self.conv8a = nn.Conv2d(144, 96, kernel_size=3, padding=1)
+        self.conv8b = nn.Conv2d(96, 96, kernel_size=3, padding=1)
+        self.conv9a = nn.Conv2d(144, 96, kernel_size=3, padding=1)
+        self.conv9b = nn.Conv2d(96, 96, kernel_size=3, padding=1)
+        self.conv10a = nn.Conv2d(99, 64, kernel_size=3, padding=1)
+        self.conv10b = nn.Conv2d(64, 32, kernel_size=3, padding=1)
+
+        self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+
+        self.conv11 = nn.Conv2d(32, 3, kernel_size=3, padding=1)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+
+        # Encoder
+        x1 = F.leaky_relu(self.conv1(x))
+        x1 = F.leaky_relu(self.conv1b(x1))
+        x2 = F.max_pool2d(x1, kernel_size=2, stride=2)
+        x2 = F.leaky_relu(self.conv2(x2))
+        x3 = F.max_pool2d(x2, kernel_size=2, stride=2)
+        x3 = F.leaky_relu(self.conv3(x3))
+        x4 = F.max_pool2d(x3, kernel_size=2, stride=2)
+        x4 = F.leaky_relu(self.conv4(x4))
+        x5 = F.max_pool2d(x4, kernel_size=2, stride=2)
+        x5 = F.leaky_relu(self.conv5a(x5))
+        x5_2 = F.max_pool2d(x5, kernel_size=2, stride=2)
+        x5_2 = F.leaky_relu(self.conv5b(x5_2))
+
+        # Decoder
+        x6 = self.upsample(x5_2)
+        x6 = torch.cat((x6, x5), dim=1)
+        x6 = F.leaky_relu(self.conv6a(x6))
+        x6 = F.leaky_relu(self.conv6b(x6))
+        x7 = self.upsample(x6)
+        x7 = torch.cat((x7, x4), dim=1)
+        x7 = F.leaky_relu(self.conv7a(x7))
+        x7 = F.leaky_relu(self.conv7b(x7))
+        x8 = self.upsample(x7)
+        x8 = torch.cat((x8, x3), dim=1)
+        x8 = F.leaky_relu(self.conv8a(x8))
+        x8 = F.leaky_relu(self.conv8b(x8))
+        x9 = self.upsample(x8)
+        x9 = torch.cat((x9, x2), dim=1)
+        x9 = F.leaky_relu(self.conv9a(x9))
+        x9 = F.leaky_relu(self.conv9b(x9))
+        x10 = self.upsample(x9)
+        x10 = torch.cat((x10, x), dim=1)
+        x10 = F.leaky_relu(self.conv10a(x10))
+        x10 = F.leaky_relu(self.conv10b(x10))
+        decoded = self.sigmoid(self.conv11(x10))
+
+        return decoded
 
 # Get orientation exif tag
 for orientation in ExifTags.TAGS.keys():
@@ -517,6 +589,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             pbar.desc = f"{prefix}Scanning '{path.parent / path.stem}' for images and labels... " \
                         f"{nf} found, {nm} missing, {ne} empty, {nc} corrupted"
 
+        print('Training ******************************************* from here')
         if nf == 0:
             print(f'{prefix}WARNING: No labels found in {path}. See {help_url}')
 
@@ -759,6 +832,25 @@ class LoadImagesAndLabels_sr(Dataset):  # for training/testing
                 gb += self.imgs[i].nbytes
                 pbar.desc = f'{prefix}Caching images ({gb / 1E9:.1f}GB)'
 
+        # Define the path to the saved checkpoint
+        checkpoint_path = "C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/checkpoint" \
+                          "-unormalized-coo/model_checkpoint_epoch_28.pt "
+
+        # Load the saved checkpoint
+        device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+
+
+        # Instantiate the Autoencoder
+        autoencoder = Autoencoder()
+        autoencoder.load_state_dict(checkpoint['model_state_dict'])
+        autoencoder.to(device)
+        autoencoder.eval()
+
+        self.device = device
+        self.denoising_autoencoder = autoencoder
+        print('Autoencoder loaded just once')
+
     def cache_labels(self, path=Path('./labels.cache'), prefix=''):
         # Cache dataset labels, check images and read shapes
         x = {}  # dict
@@ -817,13 +909,18 @@ class LoadImagesAndLabels_sr(Dataset):  # for training/testing
     #     return self
 
     def __getitem__(self, index):
+
+        # Define the path to the saved checkpoint
+
         index = self.indices[index]  # linear, shuffled, or image_weights
+        denoising_model = self.denoising_autoencoder
+        device = self.device
 
         hyp = self.hyp
         mosaic = self.mosaic and random.random() < hyp['mosaic']
         if mosaic:
             # Load mosaic
-            img, ir, labels = load_mosaic(self, index) #zjq
+            img, ir, labels = load_mosaic(self, index, denoising_model, device) #zjq
             #ir = load_ir(self, index) #zjq
             shapes = None
 
@@ -946,6 +1043,14 @@ class LoadImagesAndLabels_sr(Dataset):  # for training/testing
         return torch.stack(img4, 0),torch.stack(ir4, 0), torch.cat(label4, 0), path4, shapes4
 
 # Ancillary functions --------------------------------------------------------------------------------------------------
+
+def add_noise(tensor, poisson_rate, gaussian_std_dev):
+    gaussian_noise = gaussian_std_dev * torch.randn(tensor.size())
+    poisson_noise = torch.poisson(torch.full(tensor.size(), poisson_rate))
+    noisy_tensor = tensor + gaussian_noise + poisson_noise
+    noisy = torch.clip(noisy_tensor, 0., 1.)
+    return noisy
+
 def load_image(self, index):
     # loads 1 image from dataset, returns img, original hw, resized hw
     img = self.imgs[index]
@@ -962,21 +1067,60 @@ def load_image(self, index):
     else:
         return self.imgs[index], self.img_hw0[index], self.img_hw[index]  # img, hw_original, hw_resized
 
-def load_ir(self, index): #zjq
+def load_ir(self, index, denoising_model, device): #zjq
     # loads 1 image from dataset, returns img, original hw, resized hw
     ir = self.irs[index]
     if ir is None:  # not cached
         path = self.ir_files[index]
         ir = cv2.imread(path)  # BGR
+
+        # Convert the image to a PyTorch tensor
+        image_tensor = torch.from_numpy(ir.transpose((2, 0, 1))).float()
+        resized_image_tensor = F.interpolate(image_tensor.unsqueeze(0), size=(256, 256), mode="bilinear", align_corners=False).squeeze(0)
+        # Convert 'resized_image_tensor' to a complex tensor
+        # complex_resized_image_tensor = torch.complex(resized_image_tensor, torch.zeros_like(resized_image_tensor))
+
+
+        # Add noise
+        poisson_rate = random.uniform(0.1, 0.2)
+        gaussian_std_dev = random.uniform(0.1, 0.2)
+
+        noisy_image_tensor = add_noise(resized_image_tensor, poisson_rate, gaussian_std_dev)
+        try:
+            noisy_image_tensor = noisy_image_tensor.to(device)
+            # If the tensor is successfully moved to the device, 'to(device)' will not raise an exception.
+        except Exception as e:
+            print("An exception occurred during resizing tensor to device:", e)
+            # You can handle the exception here, such as using the CPU device instead or raising an error.
+
+
+
+        print('Denoising model is here to stay')
+        # Denoise the image using the provided denoising_model
+        with torch.no_grad():
+            print('2', noisy_image_tensor)
+            denoised_image_tensor = denoising_model(noisy_image_tensor.unsqueeze(0))
+
+        # Move 'denoised_image_tensor' from GPU to CPU
+        denoised_image_tensor_cpu = denoised_image_tensor.cpu()
+
+        # Convert the denoised image tensor to a NumPy array for visualization
+        denoised_image = (denoised_image_tensor_cpu.squeeze().clamp(0.0, 1.0).permute(1, 2, 0).numpy()).astype(
+            np.uint8)
+
+        print('denoi', denoised_image)
+
+
         assert ir is not None, 'Image_ir Not Found ' + path
         h0, w0 = ir.shape[:2]  # orig hw
         r = self.img_size / max(h0, w0)  # resize image to img_size
         if r != 1:  # always resize down, only resize up if training with augmentation
             interp = cv2.INTER_AREA if r < 1 and not self.augment else cv2.INTER_LINEAR
-            ir = cv2.resize(ir, (int(w0 * r), int(h0 * r)), interpolation=interp)
-        return ir  # ir ##, hw_original, hw_resized
+            denoised_image  = cv2.resize(denoised_image, (int(w0 * r), int(h0 * r)), interpolation=interp)
+        return denoised_image    # denoised_image   ##, hw_original, hw_resized
     else:
         return self.irs[index]  # img ##, hw_original, hw_resized
+
 
 
 def augment_hsv(img, hgain=0.5, sgain=0.5, vgain=0.5):
@@ -998,7 +1142,7 @@ def augment_hsv(img, hgain=0.5, sgain=0.5, vgain=0.5):
     #         img[:, :, i] = cv2.equalizeHist(img[:, :, i])
 
 
-def load_mosaic(self, index): #拼接图像
+def load_mosaic(self, index, denoising_model, device): #拼接图像
     # loads images in a 4-mosaic
 
     labels4 = []
@@ -1008,7 +1152,7 @@ def load_mosaic(self, index): #拼接图像
     for i, index in enumerate(indices):
         # Load image
         img, _, (h, w) = load_image(self, index)
-        ir = load_ir(self, index) #zjq
+        ir = load_ir(self, index, denoising_model, device) #zjq
 
         # place img in img4
         if i == 0:  # top left
