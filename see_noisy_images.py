@@ -13,10 +13,10 @@ import random
 
 
 
-def add_noise(tensor, poisson_rate, gaussian_std_dev, salt_pepper_prob):
+def add_noise(tensor, poisson_rate, gaussian_std_dev,):
     gaussian_noise = gaussian_std_dev * torch.randn(tensor.size())
     poisson_noise = torch.poisson(torch.full(tensor.size(), poisson_rate))
-    noisy_tensor = tensor + gaussian_noise + poisson_noise + salt_pepper_prob
+    noisy_tensor = tensor + gaussian_noise + poisson_noise
     return noisy_tensor
 
 def plot_images(original_images, noisy_images):
@@ -59,10 +59,10 @@ def load_and_plot_images(data_path, num_images=5):
     original_images = torch.stack([custom_dataset[idx][0] for idx in indices], dim=0)
 
 
-    poisson_rate = random.uniform(0.5, 1.5)
-    gaussian_std_dev = random.uniform(0.1, 0.9)
-    salt_pepper_prob = random.uniform(0.01, 0.10)
-    noisy_images = add_noise(original_images, poisson_rate, gaussian_std_dev,salt_pepper_prob)
+    poisson_rate = random.uniform(0.2, 0.4)
+    gaussian_std_dev = random.uniform(0.2,0.4)
+    # salt_pepper_prob = random.uniform(0.01, 0.10)
+    noisy_images = add_noise(original_images, poisson_rate, gaussian_std_dev)
 
     # noisy_images = original_images + 0.2 * torch.randn(original_images.size())
 
