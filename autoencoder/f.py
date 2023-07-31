@@ -193,3 +193,75 @@
 # random_float = random.uniform(0.5, 1.5)
 # print(random_float)
 #
+
+
+
+class Autoencoder(nn.Module):
+    def __init__(self):
+        super(Autoencoder, self).__init__()
+        # Encoder
+        self.conv1 = nn.Conv2d(3, 48, kernel_size=3, padding=1)
+        self.conv1b = nn.Conv2d(48, 48, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(48, 48, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(48, 48, kernel_size=3, padding=1)
+        self.conv4 = nn.Conv2d(48, 48, kernel_size=3, padding=1)
+        self.conv5a = nn.Conv2d(48, 48, kernel_size=3, padding=1)
+        self.conv5b = nn.Conv2d(48, 48, kernel_size=3, padding=1)
+
+        # Decoder
+        self.conv6a = nn.Conv2d(96, 96, kernel_size=3, padding=1)
+        self.conv6b = nn.Conv2d(96, 96, kernel_size=3, padding=1)
+        self.conv7a = nn.Conv2d(96, 96, kernel_size=3, padding=1)
+        self.conv7b = nn.Conv2d(96, 96, kernel_size=3, padding=1)
+        self.conv8a = nn.Conv2d(96, 96, kernel_size=3, padding=1)
+        self.conv8b = nn.Conv2d(96, 96, kernel_size=3, padding=1)
+        self.conv9a = nn.Conv2d(96, 96, kernel_size=3, padding=1)
+        self.conv9b = nn.Conv2d(96, 96, kernel_size=3, padding=1)
+        self.conv10a = nn.Conv2d(96, 64, kernel_size=3, padding=1)
+        self.conv10b = nn.Conv2d(64, 32, kernel_size=3, padding=1)
+
+        self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+
+        self.conv11 = nn.Conv2d(32, 3, kernel_size=3, padding=1)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+
+        # Encoder
+        x1 = F.leaky_relu(self.conv1(x))
+        x1 = F.leaky_relu(self.conv1b(x1))
+        x2 = F.max_pool2d(x1, kernel_size=2, stride=2)
+        x2 = F.leaky_relu(self.conv2(x2))
+        x3 = F.max_pool2d(x2, kernel_size=2, stride=2)
+        x3 = F.leaky_relu(self.conv3(x3))
+        x4 = F.max_pool2d(x3, kernel_size=2, stride=2)
+        x4 = F.leaky_relu(self.conv4(x4))
+        x5 = F.max_pool2d(x4, kernel_size=2, stride=2)
+        x5 = F.leaky_relu(self.conv5a(x5))
+        x5_2 = F.max_pool2d(x5, kernel_size=2, stride=2)
+        x5_2 = F.leaky_relu(self.conv5b(x5_2))
+
+        # Decoder
+        x6 = self.upsample(x5_2)
+        x6 = torch.cat((x6, x5), dim=1)
+        x6 = F.leaky_relu(self.conv6a(x6))
+        x6 = F.leaky_relu(self.conv6b(x6))
+        x7 = self.upsample(x6)
+        x7 = torch.cat((x7, x4), dim=1)
+        x7 = F.leaky_relu(self.conv7a(x7))
+        x7 = F.leaky_relu(self.conv7b(x7))
+        x8 = self.upsample(x7)
+        x8 = torch.cat((x8, x3), dim=1)
+        x8 = F.leaky_relu(self.conv8a(x8))
+        x8 = F.leaky_relu(self.conv8b(x8))
+        x9 = self.upsample(x8)
+        x9 = torch.cat((x9, x2), dim=1)
+        x9 = F.leaky_relu(self.conv9a(x9))
+        x9 = F.leaky_relu(self.conv9b(x9))
+        x10 = self.upsample(x9)
+        x10 = torch.cat((x10, x), dim=1)
+        x10 = F.leaky_relu(self.conv10a(x10))
+        x10 = F.leaky_relu(self.conv10b(x10))
+        decoded = self.sigmoid(self.conv11(x10))
+
+        return decoded

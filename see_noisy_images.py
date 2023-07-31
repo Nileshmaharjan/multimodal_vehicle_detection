@@ -54,9 +54,9 @@ def plot_images(original_images, noisy_images):
 # Load and plot original and noisy images
 def load_and_plot_images(data_path, num_images=5):
     transform = transforms.Compose([
-        transforms.Resize((128, 128)),
+        transforms.Resize((400, 400)),
         transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        # transforms.Normalize((0.46961793, 0.44640928, 0.40719114), (0.23942938, 0.23447396, 0.23768907))
     ])
 
     # train_dataset = torchvision.datasets.CIFAR10(root='D:/Research/Super/autoencoder/dataset/', download=True,
@@ -66,8 +66,8 @@ def load_and_plot_images(data_path, num_images=5):
 
     original_images = torch.stack([custom_dataset[idx][0] for idx in indices], dim=0)
 
-    poisson_rate = random.uniform(0.01, 0.02)
-    gaussian_std_dev = random.uniform(0.01, 0.02)
+    poisson_rate = random.uniform(0.2, 0.4)
+    gaussian_std_dev = random.uniform(0.2, 0.4)
     noisy_images = add_noise(original_images, poisson_rate, gaussian_std_dev)
 
     # Plot unnormalized images

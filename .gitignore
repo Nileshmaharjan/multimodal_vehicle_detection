@@ -14,4 +14,10 @@ autoencoder/runs-no-improvement-2
 autoencoder/checkpoint/
 autoencoder/checkpoint-32-64/
 autoencoder/images/
+autoencoder/runs-normalized-coco/
+autoencoder/runs-old/
+autoencoder/runs-unnormalized-coco/
+autoencoder/checkpoint-normalized-coco/
+autoencoder/checkpoint-unormalized-coo/
+autoencoder/checkpoint-old/
 runs/
