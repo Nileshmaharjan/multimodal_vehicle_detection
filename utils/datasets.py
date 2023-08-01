@@ -22,6 +22,7 @@ from PIL import Image, ExifTags
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
+from utils.denoiser import provide_denoised_image, prepare_image
 from utils.general import xyxy2xywh, xywh2xyxy, clean_str
 from utils.torch_utils import torch_distributed_zero_first
 import torch
@@ -442,7 +443,6 @@ def img2label_paths(img_paths):
     # Define label paths as a function of image paths
     sa, sb = '/images', '/labels'  # /images/, /labels/ substrings
     list = [x.replace(sa, sb, 1).replace('_' + x.split('_')[-1], '.txt') for x in img_paths]
-    print(list)
     return [x.replace(sa, sb, 1).replace('_' + x.split('_')[-1], '.txt') for x in img_paths] #replace('.' + x.split('.')[-1], '.txt')
 
 def img2ir_paths(img_paths): #zjq
@@ -839,16 +839,8 @@ class LoadImagesAndLabels_sr(Dataset):  # for training/testing
         # Load the saved checkpoint
         device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         checkpoint = torch.load(checkpoint_path, map_location=device)
-
-
-        # Instantiate the Autoencoder
-        autoencoder = Autoencoder()
-        autoencoder.load_state_dict(checkpoint['model_state_dict'])
-        autoencoder.to(device)
-        autoencoder.eval()
-
         self.device = device
-        self.denoising_autoencoder = autoencoder
+
 
     def cache_labels(self, path=Path('./labels.cache'), prefix=''):
         # Cache dataset labels, check images and read shapes
@@ -906,14 +898,13 @@ class LoadImagesAndLabels_sr(Dataset):  # for training/testing
         # Define the path to the saved checkpoint
 
         index = self.indices[index]  # linear, shuffled, or image_weights
-        denoising_model = self.denoising_autoencoder
         device = self.device
 
         hyp = self.hyp
         mosaic = self.mosaic and random.random() < hyp['mosaic']
         if mosaic:
             # Load mosaic
-            img, ir, labels = load_mosaic(self, index, denoising_model, device) #zjq
+            img, ir, labels = load_mosaic(self, index) #zjq
             #ir = load_ir(self, index) #zjq
             shapes = None
 
@@ -927,8 +918,8 @@ class LoadImagesAndLabels_sr(Dataset):  # for training/testing
 
         else:
             # Load image
-            img, (h0, w0), (h, w) = load_image(self, index, denoising_model, device)
-            ir = load_ir(self, index,  denoising_model, device) #zjq
+            img, (h0, w0), (h, w) = load_image(self, index)
+            ir = load_ir(self, index) #zjq
 
             # Letterbox
             shape = self.batch_shapes[self.batch[index]] if self.rect else self.img_size  # final letterboxed shape
@@ -990,95 +981,49 @@ class LoadImagesAndLabels_sr(Dataset):  # for training/testing
         if nL:
             labels_out[:, 1:] = torch.from_numpy(labels)
 
-
-
         # Convert
         img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
         img = np.ascontiguousarray(img)
         ir = ir[:, :, ::-1].transpose(2, 0, 1)
-        ir = np.ascontiguousarray(ir)#zjq ascontiguousarray function converts an array with discontinuous memory storage into an array with continuous memory storage, making the operation faster
-
-        # plot only
-
-        # Convert back to the original format (HxWx3) for visualization using OpenCV
-        img_bgr = cv2.cvtColor(img.transpose(1, 2, 0), cv2.COLOR_RGB2BGR)
-        ir_bgr = cv2.cvtColor(ir.transpose(1, 2, 0), cv2.COLOR_RGB2BGR)
-
-        # Now you can plot the images using Matplotlib
-        plt.figure(figsize=(10, 5))
-        plt.subplot(1, 2, 1)
-        plt.imshow(img_bgr)
-        plt.title('RGB Image')
-        plt.axis('off')
-
-        plt.subplot(1, 2, 2)
-        plt.imshow(ir_bgr)
-        plt.title('Infrared Image')
-        plt.axis('off')
-
-        # Save the plot as an image file (e.g., PNG or JPEG)
-        plt.savefig('rgb_ir.png', bbox_inches='tight', pad_inches=0.1)
-        #plot ends
+        ir = np.ascontiguousarray(ir)#zjq as contiguous array function converts an array with discontinuous memory storage into an array with continuous memory storage, making the operation faster
 
         if self.denoise:  # Perform denoising
-            # Convert NumPy images to PyTorch tensors
-            img_tensor = torch.from_numpy(img).float() / 255.0
-            ir_tensor = torch.from_numpy(ir).float() / 255.0
+            img_tensor = prepare_image(img)
+            denoised_img_tensor = provide_denoised_image(img_tensor)
 
-            # Unsqueeze to add a batch dimension
-            img_tensor = img_tensor.unsqueeze(0)  # Adds a dimension at index 0
-            ir_tensor = ir_tensor.unsqueeze(0)  # Adds a dimension at index 0
-
-            # Reshape the tensors to have a shape of (batch_size, channel, 256, 256)
-            img_tensor_reshape = img_tensor.reshape(-1, 3, 256, 256)
-            ir_tensor_reshape = ir_tensor.reshape(-1, 3, 256, 256)
-
-            try:
-                img_tensor_reshape_2 = img_tensor_reshape.to(device)
-                # If the tensor is successfully moved to the device, 'to(device)' will not raise an exception.
-            except Exception as e:
-                print("An exception occurred during resizing tensor to device:", e)
-
+            img_tensor_cpu = img_tensor.cpu()
+            denoised_img_tensor_cpu = denoised_img_tensor.cpu()
             print('here')
 
-            # Denoise the RGB image using the denoising model
-            with torch.no_grad():
-                img_denoised_tensor = denoising_model(img_tensor_reshape_2).cpu()
-                img_denoised_tensor = img_denoised_tensor.cpu()
+            a = img_tensor_cpu[0].squeeze(0)
+            b = a.permute(1, 2, 0)
+            print('here')
 
-            # Denoise the IR image using the denoising model
-            with torch.no_grad():
-                ir_denoised_tensor = denoising_model(ir_tensor_reshape.to(device)).cpu()
+            c = denoised_img_tensor_cpu[0].squeeze(0)
+            d = c.permute(1, 2, 0)
 
-            # Convert the denoised image tensors back to NumPy arrays
-            img_denoised = img_denoised_tensor.squeeze().numpy() * 255.0
-            ir_denoised = ir_denoised_tensor.squeeze().numpy() * 255.0
-
-            print('denoised')
-
-            img_denoised = img_denoised.transpose(0, 2, 3, 1)  # Move the batch dimension to the last axis
-            img_denoised = cv2.cvtColor(img_denoised[0], cv2.COLOR_RGB2BGR)
-
-            # # Convert the denoised IR image to BGR format for compatibility with OpenCV
-            # ir_denoised = cv2.cvtColor(ir_denoised.astype(np.uint8).transpose(1, 2, 0), cv2.COLOR_RGB2BGR)
-
-            # Now you can plot the images using Matplotlib
+            # Plot the images
             plt.figure(figsize=(10, 5))
+
+            # Plot the resized original image
             plt.subplot(1, 2, 1)
-            plt.imshow(img_denoised)
-            plt.title('RGB Image')
+            plt.imshow(b.numpy())
+            plt.title('Noisy Image')
             plt.axis('off')
 
+            # Plot the resized infrared image
             plt.subplot(1, 2, 2)
-            plt.imshow(img_denoised, cmap='gray')
-            plt.title('RGB Image')
+            plt.imshow(d.numpy())
+            plt.title('Denoised Image')
             plt.axis('off')
 
-            # Save the plot as an image file (e.g., PNG or JPEG)
-            plt.savefig('denoised.png', bbox_inches='tight', pad_inches=0.1)
-            # ...
+            plt.savefig('sdsf.png')
+            print('here')
 
-        return img, ir, labels, shapes, img_denoised, ir_denoised
+
+
+
+
 
         return torch.from_numpy(img), torch.from_numpy(ir), labels_out, self.img_files[index], shapes
 
@@ -1128,7 +1073,7 @@ def add_noise(tensor, poisson_rate, gaussian_std_dev):
     noisy = torch.clip(noisy_tensor, 0., 1.)
     return noisy
 
-def load_image(self, index,  denoising_model, device):
+def load_image(self, index):
     # loads 1 image from dataset, returns img, original hw, resized hw
 
     img = self.imgs[index]
@@ -1163,7 +1108,7 @@ def load_image(self, index,  denoising_model, device):
     else:
         return self.imgs[index], self.img_hw0[index], self.img_hw[index]  # img, hw_original, hw_resized
 
-def load_ir(self, index, denoising_model, device): #zjq
+def load_ir(self, index,): #zjq
     # loads 1 image from dataset, returns img, original hw, resized hw
     ir = self.irs[index]
     if ir is None:  # not cached
@@ -1213,7 +1158,7 @@ def augment_hsv(img, hgain=0.5, sgain=0.5, vgain=0.5):
     #         img[:, :, i] = cv2.equalizeHist(img[:, :, i])
 
 
-def load_mosaic(self, index, denoising_model, device): #拼接图像
+def load_mosaic(self, index): #拼接图像
     # loads images in a 4-mosaic
 
     labels4 = []
@@ -1222,8 +1167,8 @@ def load_mosaic(self, index, denoising_model, device): #拼接图像
     indices = [index] + [self.indices[random.randint(0, self.n - 1)] for _ in range(3)]  # 3 additional image indices
     for i, index in enumerate(indices):
         # Load image
-        img, _, (h, w) = load_image(self, index, denoising_model, device)
-        ir = load_ir(self, index, denoising_model, device) #zjq
+        img, _, (h, w) = load_image(self, index)
+        ir = load_ir(self, index) #zjq
 
         # place img in img4
         if i == 0:  # top left

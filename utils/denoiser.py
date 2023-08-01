@@ -1,27 +1,8 @@
 import torch
-import torchvision
-from torchvision import transforms
-from torch.utils.data import DataLoader, random_split, ConcatDataset
-from torch import nn
-import matplotlib.pyplot as plt
-from torch.autograd import Variable
+
 
 # Define the path to the saved checkpoint
 checkpoint_path = "C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/checkpoint-unormalized-coo/model_checkpoint_epoch_28.pt"
-
-
-# Define the transformation for the test data
-test_transform = transforms.Compose([
-    transforms.Resize((256, 256)),
-    transforms.ToTensor(),
-])
-
-# Load the test dataset
-data_path_test = r"C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/images/test/"
-test_dataset = torchvision.datasets.ImageFolder(root=data_path_test, transform=test_transform)
-
-# Create a DataLoader for the test dataset
-test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=8, shuffle=False)
 
 # Load the saved checkpoint
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -30,9 +11,6 @@ checkpoint = torch.load(checkpoint_path, map_location=device)
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
-import configs.models_config as config
-import cv2
-
 
 class Autoencoder(nn.Module):
     def __init__(self):
@@ -104,79 +82,31 @@ class Autoencoder(nn.Module):
 
         return decoded
 
-
 # Instantiate the Autoencoder
 autoencoder = Autoencoder()
 autoencoder.load_state_dict(checkpoint['model_state_dict'])
 autoencoder.to(device)
 autoencoder.eval()
 
-# Function to add noise to images
-def add_noise(tensor, poisson_rate, gaussian_std_dev):
-    gaussian_noise = gaussian_std_dev * torch.randn(tensor.size())
-    poisson_noise = torch.poisson(torch.full(tensor.size(), poisson_rate))
-    noisy_tensor = tensor + gaussian_noise + poisson_noise
-    noisy = torch.clip(noisy_tensor, 0., 1.)
-    return noisy
+def prepare_image(img):
+    # Convert NumPy images to PyTorch tensors
+    img_tensor = torch.from_numpy(img).float() / 255.0
+    batched_tensor = img_tensor.unsqueeze(0)
+    target_size = (256, 256)
+    resized_tensor = F.interpolate(batched_tensor, size=target_size, mode='bilinear', align_corners=False)
+    final_tensor = resized_tensor.squeeze(0)
 
-# Function to display the original, noisy, and denoised images
+    img_tensor_batch_size = final_tensor.unsqueeze(0)  # Adds a dimension at index 0
+    img_tensor_reshape = img_tensor_batch_size.to(device)
 
-def resize_image(image, target_size):
-    return cv2.resize(image, (1024, 1024), interpolation=cv2.INTER_LINEAR)
-def visualize_denoised_images(original, noisy, denoised, num_images=5):
-    fig, axes = plt.subplots(num_images, 3, figsize=(10, 3*num_images))
-    for i in range(num_images):
-        resized_noisy = resize_image(noisy[i].permute(1, 2, 0).numpy(), (1024, 1024))
-        print('here')
-        axes[i, 0].imshow(resized_noisy)
-        axes[i, 0].set_title('Input Image')
-        axes[i, 0].axis('off')
+    return img_tensor_reshape
 
-        resized_original = resize_image(original[i].permute(1, 2, 0).numpy(), (1024, 1024))
-        axes[i, 1].imshow(resized_original)
-        axes[i, 1].set_title('Ground Truth')
-        axes[i, 1].axis('off')
 
-        resized_denoised = resize_image(denoised[i].permute(1, 2, 0).numpy(), (1024, 1024))
-        axes[i, 2].imshow(resized_denoised)
-        axes[i, 2].set_title('Denoised')
-        axes[i, 2].axis('off')
-
-        # # Now you can plot the images using Matplotlib
-        # plt.figure(figsize=(10, 5))
-        # plt.subplot(1, 2, 1)
-        # plt.imshow(resized_original)
-        # plt.axis('off')
-        #
-        # plt.subplot(1, 2, 2)
-        # plt.imshow(resized_original)
-        # plt.axis('off')
-        #
-        #
-        #
-        # # Save the plot as an image file (e.g., PNG or JPEG)
-        # plt.savefig('original.png', bbox_inches='tight', pad_inches=0.1)
-
-    plt.tight_layout()
-    plt.show()
-
-# Select a batch of test images
-test_images, _ = next(iter(test_loader))
-
-# Add noise to the test images
-poisson_rate = 0.1
-gaussian_std_dev = 0.05
-noisy_images = add_noise(test_images, poisson_rate, gaussian_std_dev)
-noisy_images = noisy_images.to(device)
-print('here')
-
-# Apply the denoiser model to the noisy images
-with torch.no_grad():
-    denoised_images = autoencoder(noisy_images)
-    print('here')
-
-# Visualize the original, noisy, and denoised images
-visualize_denoised_images(test_images, noisy_images.cpu(), denoised_images.cpu())
+def provide_denoised_image(tensor):
+    noisy_images = tensor.to(device)
+    with torch.no_grad():
+        denoised_images = autoencoder(noisy_images)
+    return denoised_images
 
 
 

@@ -8,31 +8,35 @@ from torch.autograd import Variable
 
 # Define the path to the saved checkpoint
 checkpoint_path = "C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/checkpoint-unormalized-coo/model_checkpoint_epoch_28.pt"
-# checkpoint_path = "C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/checkpoint-unormalized-coo/model_checkpoint_epoch_28.pt"
 
-# Define the transformation for the test data
-test_transform = transforms.Compose([
-    transforms.Resize((256, 256)),
-    transforms.ToTensor(),
-    # transforms.Normalize((0.46961793,0.44640928, 0.40719114), (0.23942938, 0.23447396, 0.23768907))
-])
 
-# Load the test dataset
-data_path_test = r"C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/images/test/"
-test_dataset = torchvision.datasets.ImageFolder(root=data_path_test, transform=test_transform)
-
-# Create a DataLoader for the test dataset
-test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=32, shuffle=False)
+# # Define the transformation for the test data
+# test_transform = transforms.Compose([
+#     transforms.Resize((256, 256)),
+#     transforms.ToTensor(),
+# ])
+#
+# # Load the test dataset
+# data_path_test = r"C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/images/test/"
+# test_dataset = torchvision.datasets.ImageFolder(root=data_path_test, transform=test_transform)
+#
+# # Create a DataLoader for the test dataset
+# test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=8, shuffle=False)
 
 # Load the saved checkpoint
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 checkpoint = torch.load(checkpoint_path, map_location=device)
 
+# Get the tensor from the checkpoint
+
+loaded_tensor = torch.load('saved_image_tensor.pt')
+print('here')
+
+
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
-import configs.models_config as config
-import cv2
+
 
 
 class Autoencoder(nn.Module):
@@ -112,48 +116,40 @@ autoencoder.load_state_dict(checkpoint['model_state_dict'])
 autoencoder.to(device)
 autoencoder.eval()
 
-# Function to add noise to images
-def add_noise(tensor, poisson_rate, gaussian_std_dev):
-    gaussian_noise = gaussian_std_dev * torch.randn(tensor.size())
-    poisson_noise = torch.poisson(torch.full(tensor.size(), poisson_rate))
-    noisy_tensor = tensor + gaussian_noise + poisson_noise
-    noisy = torch.clip(noisy_tensor, 0., 1.)
-    return noisy
 
-# Function to display the original, noisy, and denoised images
 
-def resize_image(image, target_size):
-    return cv2.resize(image, (1024, 1024), interpolation=cv2.INTER_LINEAR)
-def visualize_denoised_images(original, noisy, denoised, num_images=6):
-    fig, axes = plt.subplots(num_images, 3, figsize=(10, 3*num_images))
-    for i in range(num_images):
-        resized_noisy = resize_image(noisy[i].permute(1, 2, 0).numpy(), (1024, 1024))
-        axes[i, 0].imshow(resized_noisy)
-        axes[i, 0].set_title('Input Image')
-        axes[i, 0].axis('off')
+def visualize_denoised_images( noisy, denoised):
+    print('here')
+    a = noisy[0].squeeze(0)
+    b = a.permute(1,2,0)
+    print('here')
 
-        resized_original = resize_image(original[i].permute(1, 2, 0).numpy(), (1024, 1024))
-        axes[i, 1].imshow(resized_original)
-        axes[i, 1].set_title('Ground Truth')
-        axes[i, 1].axis('off')
+    c = denoised[0].squeeze(0)
+    d = c.permute(1,2,0)
 
-        resized_denoised = resize_image(denoised[i].permute(1, 2, 0).numpy(), (1024, 1024))
-        axes[i, 2].imshow(resized_denoised)
-        axes[i, 2].set_title('Denoised')
-        axes[i, 2].axis('off')
+    # Plot the images
+    plt.figure(figsize=(10, 5))
 
-    plt.tight_layout()
+    # Plot the resized original image
+    plt.subplot(1, 2, 1)
+    plt.imshow(b.numpy())
+    plt.title('Resized Original Image')
+    plt.axis('off')
+
+    # Plot the resized infrared image
+    plt.subplot(1, 2, 2)
+    plt.imshow(d.numpy())
+    plt.title('Resized Infrared Image')
+    plt.axis('off')
+
     plt.show()
 
-# Select a batch of test images
-test_images, _ = next(iter(test_loader))
 
-# Add noise to the test images
-poisson_rate = 0.1
-gaussian_std_dev = 0.05
-noisy_images = add_noise(test_images, poisson_rate, gaussian_std_dev)
-noisy_images = noisy_images.to(device)
-print('here')
+
+
+
+
+noisy_images = loaded_tensor.to(device)
 
 # Apply the denoiser model to the noisy images
 with torch.no_grad():
@@ -161,70 +157,6 @@ with torch.no_grad():
     print('here')
 
 # Visualize the original, noisy, and denoised images
-visualize_denoised_images(test_images, noisy_images.cpu(), denoised_images.cpu())
+visualize_denoised_images(noisy_images.cpu(), denoised_images.cpu())
 
 
-# def load_ir(self, index, denoising_model): #zjq
-#     # loads 1 image from dataset, returns img, original hw, resized hw
-#     ir = self.irs[index]
-#     if ir is None:  # not cached
-#         path = self.ir_files[index]
-#         ir = cv2.imread(path)  # BGR
-#
-#         # Convert the image to a PyTorch tensor
-#         image_tensor = torch.from_numpy(ir.transpose((2, 0, 1))).float() / 255.0
-#
-#         # Add noise
-#         poisson_rate = random.uniform(0.1, 0.2)
-#         gaussian_std_dev = random.uniform(0.1, 0.2)
-#
-#         noisy_image_tensor = self.add_noise(image_tensor, poisson_rate, gaussian_std_dev)
-#
-#         # Denoise the image using the provided denoising_model
-#         with torch.no_grad():
-#             denoised_image_tensor = denoising_model(noisy_image_tensor.unsqueeze(0))
-#
-#         # Convert the denoised image back to a NumPy array for visualization
-#         denoised_image = (denoised_image_tensor.squeeze().clamp(0.0, 1.0).permute(1, 2, 0).numpy() * 255).astype(np.uint8)
-#
-#
-#         assert ir is not None, 'Image_ir Not Found ' + path
-#         h0, w0 = ir.shape[:2]  # orig hw
-#         r = self.img_size / max(h0, w0)  # resize image to img_size
-#         if r != 1:  # always resize down, only resize up if training with augmentation
-#             interp = cv2.INTER_AREA if r < 1 and not self.augment else cv2.INTER_LINEAR
-#             denoised_image  = cv2.resize(denoised_image, (int(w0 * r), int(h0 * r)), interpolation=interp)
-#         return denoised_image    # denoised_image   ##, hw_original, hw_resized
-#     else:
-#         return self.irs[index]  # img ##, hw_original, hw_resized
-#
-# def load_ir(self, index, denoising_model): #zjq
-#     # loads 1 image from dataset, returns img, original hw, resized hw
-#     ir = self.irs[index]
-#     if ir is None:  # not cached
-#         path = self.ir_files[index]
-#         ir = cv2.imread(path)  # BGR
-#
-#         # Add noise
-#
-#         # Convert the image to a PyTorch tensor
-#         image_tensor = torch.from_numpy(ir.transpose((2, 0, 1))).float() / 255.0
-#
-#         # Add noise to the image
-#         poisson_rate = random.uniform(0.1, 0.2)
-#         gaussian_std_dev = random.uniform(0.01, 0.05)
-#
-#         noisy_image_tensor = add_noise(image_tensor, poisson_rate, gaussian_std_dev)
-#
-#         # Convert the noisy image back to a NumPy array for visualization
-#         ir = (noisy_image_tensor.permute(1, 2, 0).numpy() * 255).astype(np.uint8)
-#
-#         assert ir is not None, 'Image_ir Not Found ' + path
-#         h0, w0 = ir.shape[:2]  # orig hw
-#         r = self.img_size / max(h0, w0)  # resize image to img_size
-#         if r != 1:  # always resize down, only resize up if training with augmentation
-#             interp = cv2.INTER_AREA if r < 1 and not self.augment else cv2.INTER_LINEAR
-#             ir = cv2.resize(ir, (int(w0 * r), int(h0 * r)), interpolation=interp)
-#         return ir  # ir ##, hw_original, hw_resized
-#     else:
-#         return self.irs[index]  # img ##, hw_original, hw_resized
