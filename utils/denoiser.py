@@ -99,7 +99,18 @@ def prepare_image(img):
     img_tensor_batch_size = final_tensor.unsqueeze(0)  # Adds a dimension at index 0
     img_tensor_reshape = img_tensor_batch_size.to(device)
 
-    return img_tensor_reshape
+    return batched_tensor, img_tensor_reshape
+
+def prepare_image_via_tensor(img_tensor):
+    batched_tensor = img_tensor.unsqueeze(0)
+    target_size = (256, 256)
+    resized_tensor = F.interpolate(batched_tensor, size=target_size, mode='bilinear', align_corners=False)
+    final_tensor = resized_tensor.squeeze(0)
+
+    img_tensor_batch_size = final_tensor.unsqueeze(0)  # Adds a dimension at index 0
+    img_tensor_reshape = img_tensor_batch_size.to(device)
+
+    return batched_tensor, img_tensor_reshape
 
 
 def provide_denoised_image(tensor):

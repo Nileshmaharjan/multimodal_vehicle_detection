@@ -154,7 +154,6 @@ noisy_images = loaded_tensor.to(device)
 # Apply the denoiser model to the noisy images
 with torch.no_grad():
     denoised_images = autoencoder(noisy_images)
-    print('here')
 
 # Visualize the original, noisy, and denoised images
 visualize_denoised_images(noisy_images.cpu(), denoised_images.cpu())
