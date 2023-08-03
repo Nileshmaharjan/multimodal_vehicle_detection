@@ -1027,7 +1027,6 @@ def add_noise(tensor, poisson_rate, gaussian_std_dev):
 
 def load_image(self, index):
     # loads 1 image from dataset, returns img, original hw, resized hw
-    print('I am called right')
 
     img = self.imgs[index]
     if img is None:  # not cached
@@ -1071,7 +1070,6 @@ def load_image(self, index):
 
 def load_ir(self, index,): #zjq
     # loads 1 image from dataset, returns img, original hw, resized hw
-    print('I am called too right')
     ir = self.irs[index]
     if ir is None:  # not cached
         path = self.ir_files[index]

@@ -352,7 +352,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='test.py')
     parser.add_argument('--weights', nargs='+', type=str, default='small_EDSR_fold1.pt', help='model.pt path(s)')
     parser.add_argument('--data', type=str, default='data/SRvedai.yaml', help='*.data path')
-    parser.add_argument('--batch-size', type=int, default=1, help='size of each image batch')
+    parser.add_argument('--batch-size', type=int, default=4, help='size of each image batch')
     parser.add_argument('--img-size', type=int, default=512, help='inference size (pixels)')
     parser.add_argument('--input_mode', type=str, default='RGB+IR') #RGB IR RGB+IR RGB+IR+fusion
     parser.add_argument('--conf-thres', type=float, default=0.001, help='object confidence threshold')
