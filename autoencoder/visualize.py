@@ -7,30 +7,16 @@ import matplotlib.pyplot as plt
 from torch.autograd import Variable
 
 # Define the path to the saved checkpoint
-checkpoint_path = "C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/checkpoint-unormalized-coo/model_checkpoint_epoch_28.pt"
+checkpoint_path = "C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/checkpoint/model_checkpoint_epoch_6.pt"
 
 
-# # Define the transformation for the test data
-# test_transform = transforms.Compose([
-#     transforms.Resize((256, 256)),
-#     transforms.ToTensor(),
-# ])
-#
-# # Load the test dataset
-# data_path_test = r"C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/images/test/"
-# test_dataset = torchvision.datasets.ImageFolder(root=data_path_test, transform=test_transform)
-#
-# # Create a DataLoader for the test dataset
-# test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=8, shuffle=False)
+
 
 # Load the saved checkpoint
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 checkpoint = torch.load(checkpoint_path, map_location=device)
 
 # Get the tensor from the checkpoint
-
-loaded_tensor = torch.load('saved_image_tensor.pt')
-print('here')
 
 
 import torch

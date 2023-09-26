@@ -56,7 +56,6 @@ def load_and_plot_images(data_path, num_images=5):
     transform = transforms.Compose([
         transforms.Resize((400, 400)),
         transforms.ToTensor(),
-        # transforms.Normalize((0.46961793, 0.44640928, 0.40719114), (0.23942938, 0.23447396, 0.23768907))
     ])
 
     # train_dataset = torchvision.datasets.CIFAR10(root='D:/Research/Super/autoencoder/dataset/', download=True,
@@ -77,7 +76,7 @@ def load_and_plot_images(data_path, num_images=5):
 
 
 # Load and plot images from custom dataset
-load_and_plot_images( r"C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/images/coco/", num_images=5)
+load_and_plot_images(r"/autoencoder/images/coco/", num_images=5)
 
 
 import torch

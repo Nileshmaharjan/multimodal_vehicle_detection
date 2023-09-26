@@ -2,7 +2,7 @@ import torch
 
 
 # Define the path to the saved checkpoint
-checkpoint_path = "C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/checkpoint-unormalized-coo/model_checkpoint_epoch_28.pt"
+checkpoint_path = "C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/checkpoint_noise_range/model_checkpoint_epoch_24.pt"
 
 # Load the saved checkpoint
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")

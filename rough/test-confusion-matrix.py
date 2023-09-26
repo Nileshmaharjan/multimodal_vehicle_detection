@@ -19,9 +19,10 @@ from utils.plots import plot_images, output_to_target, plot_study_txt
 from utils.torch_utils import select_device, time_synchronized
 
 from torchvision import transforms
-from PIL import Image
 
 unloader = transforms.ToPILImage()
+
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 
 def tensor_to_PIL(tensor):
@@ -60,6 +61,7 @@ def test(data,
 
     else:  # called directly
         set_logging()
+        opt.device = '0'
         device = select_device(opt.device, batch_size=batch_size)
 
         # Directories
@@ -68,29 +70,10 @@ def test(data,
 
         # Load model
         model = attempt_load(weights, map_location=device)  # load FP32 model
-        # zjq
-        # print(model)
         print(model.yaml_file)
-        # import thop
-        # input_image_size = opt.img_size
-        # input_image = torch.randn(1, 3, input_image_size, input_image_size).to(device)
-        # flops, params = thop.profile(model, inputs=(input_image,input_image,input_mode), verbose=False)
-        # print('Params: %.4fM'%(params/1e6))
-        # print('FLOPs: %.2fG'%(flops/1e9))
-        # model=torch.jit.trace(model,(input_image,input_image)).eval()
-        # print(model)
-        # print('Layers: %.0f'%(len(list(model.modules()))))
+
         gs = max(int(model.stride.max()), 32)  # grid size (max stride)
         imgsz = check_img_size(imgsz, s=gs)  # check img_size
-
-        # Multi-GPU disabled, incompatible with .half() https://github.com/ultralytics/yolov5/issues/99
-        # if device.type != 'cpu' and torch.cuda.device_count() > 1:
-        #     model = nn.DataParallel(model)
-
-    # Half
-    # half = device.type != 'cpu'  # half precision only supported on CUDA
-    # if half:
-    #     model.half()
 
     # Configure
     model.eval()
@@ -111,8 +94,6 @@ def test(data,
         log_imgs = min(wandb_logger.log_imgs, 100)
     # Dataloader
     if not training:
-        # if device.type != 'cpu': #zjq zhushi
-        #     model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
         task = opt.task if opt.task in ('train', 'val', 'test') else 'val'  # path to train/val/test images
         dataloader = create_dataloader_sr(data[task], imgsz, batch_size, gs, opt, pad=0.5, rect=True,
                                           prefix=colorstr(f'{task}: '))[0]
@@ -125,6 +106,12 @@ def test(data,
     p, r, f1, mp, mr, map50, map, t0, t1 = 0., 0., 0., 0., 0., 0., 0., 0., 0.
     loss = torch.zeros(3, device=device)
     jdict, stats, ap, ap_class, wandb_images = [], [], [], [], []
+
+    gt_count = 0
+    pred_count = 0
+    correct_count = 0
+    incorrect_count = 0
+
     for batch_i, (img, ir, targets, paths, shapes) in enumerate(tqdm(dataloader, desc=s)):  # zjq
         img = img.to(device, non_blocking=True).float()
         # img = img.half() if half else img.float()  # uint8 to fp16/32
@@ -222,7 +209,6 @@ def test(data,
                 for cls in torch.unique(tcls_tensor):
                     ti = (cls == tcls_tensor).nonzero(as_tuple=False).view(-1)  # prediction indices
                     pi = (cls == pred[:, 5]).nonzero(as_tuple=False).view(-1)  # target indices
-
                     # Search for detections
                     if pi.shape[0]:
                         # Prediction to target ious
@@ -245,12 +231,14 @@ def test(data,
         # Plot images
         if plots:  # and batch_i < 3: #zjq
             f = save_dir / f'test_batch{batch_i}_labels.png'  # labels
-            # f = '/home/data/zhangjiaqing/dataset/VEDAI/train_label/'+paths[0].split('/')[-1].replace('_co','_label') #zjq
+
             if input_mode == 'IR':
                 Thread(target=plot_images, args=(ir, targets, paths, f, names), daemon=True).start()
             else:
                 Thread(target=plot_images, args=(img, targets, paths, f, names), daemon=True).start()
+
             f = save_dir / f'test_batch{batch_i}_pred.png'  # predictions
+
             if input_mode == 'IR':
                 Thread(target=plot_images, args=(ir, output_to_target(out), paths, f, names), daemon=True).start()
             else:
@@ -265,11 +253,58 @@ def test(data,
     else:
         nt = torch.zeros(1)
 
+    # Assuming y_true and y_pred are your true labels and predicted labels, respectively
+    conf_matrix = confusion_matrix.matrix
+
+    # # Specify the filename where you want to save the array
+    # file_name = "wdsr_confusion_matrix_low.npy"
+    #
+    # # Save the array to the file
+    # np.save(file_name, conf_matrix)
+    #
+    # import matplotlib.pyplot as plt
+    # import seaborn as sns
+    # # Create a heatmap to visualize the confusion matrix
+    # plt.figure(figsize=(6, 4))
+    # sns.heatmap(conf_matrix, annot=True, fmt=".2f", cmap="Blues", cbar=False)
+    #
+    # plt.xlabel("Predicted")
+    # plt.ylabel("Actual")
+    # plt.title("Confusion Matrix")
+    # plt.savefig("confusion_matrix_test.png", bbox_inches="tight")
+    # # Total number of labels
+    # total_labels = conf_matrix.sum()
+    #
+    # # Initialize empty lists to store per-class statistics
+    # correct_per_class = []
+    # incorrect_per_class = []
+    #
+    # # Initialize empty lists to store per-class count accuracy
+    # count_accuracy_per_class = []
+    #
+    # # Calculate count accuracy for each class
+    # for i in range(conf_matrix.shape[0]):
+    #     # True Positives for class i
+    #     tp = conf_matrix[i, i]
+    #
+    #     # False Positives and False Negatives for class i
+    #     fp = np.sum(conf_matrix[:, i]) - tp
+    #     fn = np.sum(conf_matrix[i, :]) - tp
+    #
+    #     # Total correct predictions for class i
+    #     correct_class_i = tp
+    #
+    #     # Count accuracy for class i
+    #     count_accuracy_class_i = correct_class_i / (correct_class_i + fp + fn)
+    #
+    #     count_accuracy_per_class.append(count_accuracy_class_i)
+    #
+    # print(count_accuracy_per_class)
+    # # Now, count_accuracy_per_class list contains the count accuracy for each class.
+
     # Print results
     pf = '%20s' + '%12i' * 2 + '%12.4g' * 4  # print format
     print(pf % ('all', seen, nt.sum(), mp, mr, map50, map))
-    # with open("trying.txt", 'a+') as f:
-    #     f.write((pf % ('all', seen, nt.sum(), mp, mr, map50, map)) + '\n')  # append metrics, val_loss
 
     import xlsxwriter
     workbook = xlsxwriter.Workbook('hello.xlsx')  # 建立文件
@@ -286,11 +321,9 @@ def test(data,
     if (verbose or (nc < 50 and not training)) and nc > 1 and len(stats):
         for i, c in enumerate(ap_class):
             print(pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i]))
-            # with open("trying.txt", 'a+') as f:
-            #     f.write((pf % (names[c], seen, nt[c], p[i], r[i], ap50[i], ap[i])) + '\n')  # append metrics, val_loss
-            worksheet.write(i + 1, 0, names[c])  # 向A1写入
-            worksheet.write(i + 1, 1, seen)  # 向A1写入
-            worksheet.write(i + 1, 2, nt[c])  # 向第二行第二例写入
+            worksheet.write(i + 1, 0, names[c])  # Write to A1
+            worksheet.write(i + 1, 1, seen)  # Write to A1
+            worksheet.write(i + 1, 2, nt[c])  # Write to the second example of the second row
             worksheet.write(i + 1, 3, p[i] * 100)
             worksheet.write(i + 1, 4, r[i] * 100)
             worksheet.write(i + 1, 5, ap50[i] * 100)
@@ -344,7 +377,8 @@ def test(data,
     maps = np.zeros(nc) + map
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
-    return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
+    return (mp, mr, map50, map,
+            *(loss.cpu() / len(dataloader)).tolist()), maps, t, gt_count, pred_count, correct_count, incorrect_count
 
 
 if __name__ == '__main__':
@@ -365,7 +399,7 @@ if __name__ == '__main__':
     parser.add_argument('--save-hybrid', action='store_true', help='save label+prediction hybrid results to *.txt')
     parser.add_argument('--save-conf', action='store_true', help='save confidences in --save-txt labels')
     parser.add_argument('--save-json', action='store_true', help='save a cocoapi-compatible JSON results file')
-    parser.add_argument('--project', default='runs/test', help='save to project/name')
+    parser.add_argument('--project', default='runs-SRyolo_new_mf_1/test', help='save to project/name')
     parser.add_argument('--name', default='exp', help='save to project/name')
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     opt = parser.parse_args()
@@ -374,21 +408,21 @@ if __name__ == '__main__':
     print(opt)
     check_requirements()
     if opt.task in ('train', 'val', 'test'):  # run normally
-        test(opt.data,
-             opt.weights,
-             opt.batch_size,
-             opt.img_size,
-             opt.input_mode,
-             opt.conf_thres,
-             opt.iou_thres,
-             opt.save_json,
-             opt.single_cls,
-             opt.augment,
-             opt.verbose,
-             save_txt=opt.save_txt | opt.save_hybrid,
-             save_hybrid=opt.save_hybrid,
-             save_conf=opt.save_conf,
-             )
+        results = test(opt.data,
+                       opt.weights,
+                       opt.batch_size,
+                       opt.img_size,
+                       opt.input_mode,
+                       opt.conf_thres,
+                       opt.iou_thres,
+                       opt.save_json,
+                       opt.single_cls,
+                       opt.augment,
+                       opt.verbose,
+                       save_txt=opt.save_txt | opt.save_hybrid,
+                       save_hybrid=opt.save_hybrid,
+                       save_conf=opt.save_conf,
+                       )
 
     elif opt.task == 'speed':  # speed benchmarks
         for w in opt.weights:

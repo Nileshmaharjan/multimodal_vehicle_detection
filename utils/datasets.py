@@ -1027,7 +1027,6 @@ def add_noise(tensor, poisson_rate, gaussian_std_dev):
 
 def load_image(self, index):
     # loads 1 image from dataset, returns img, original hw, resized hw
-
     img = self.imgs[index]
     if img is None:  # not cached
         path = self.img_files[index]
@@ -1040,8 +1039,8 @@ def load_image(self, index):
         image_tensor = torch.from_numpy(image_rgb.transpose((2, 0, 1))).float() / 255.0
 
         # Add noise to the image
-        poisson_rate = random.uniform(0.001, 0.01)
-        gaussian_std_dev = random.uniform(0.001, 0.01)
+        poisson_rate = random.uniform(0.5, 1.0)
+        gaussian_std_dev = random.uniform(0.5, 1.0)
 
         noisy_image_tensor = add_noise(image_tensor, poisson_rate, gaussian_std_dev)
 
@@ -1064,6 +1063,14 @@ def load_image(self, index):
         del denoised_img_tensor
         del denoised_img_tensor_cpu
 
+        assert img is not None, 'Image Not Found ' + path
+        h0, w0 = img.shape[:2]  # orig hw
+        r = self.img_size / max(h0, w0)  # resize image to img_size
+        if r != 1:  # always resize down, only resize up if training with augmentation
+            interp = cv2.INTER_AREA if r < 1 and not self.augment else cv2.INTER_LINEAR
+            img = cv2.resize(noisy_image_tensor, (int(w0 * r), int(h0 * r)), interpolation=interp)
+
+
         return img, (h0, w0), img.shape[:2]  # img, hw_original, hw_resized
     else:
         return self.imgs[index], self.img_hw0[index], self.img_hw[index]  # img, hw_original, hw_resized
@@ -1079,8 +1086,8 @@ def load_ir(self, index,): #zjq
         image_tensor = torch.from_numpy(ir.transpose((2, 0, 1))).float() / 255.0
 
         # Add noise to the image
-        poisson_rate = random.uniform(0.001, 0.01)
-        gaussian_std_dev = random.uniform(0.001, 0.01)
+        poisson_rate = random.uniform(0.5, 1.0)
+        gaussian_std_dev = random.uniform(0.5, 1.0)
 
         noisy_image_tensor = add_noise(image_tensor, poisson_rate, gaussian_std_dev)
 
@@ -1104,6 +1111,13 @@ def load_ir(self, index,): #zjq
         del img_tensor
         del denoised_img_tensor
         del denoised_img_tensor_cpu
+
+        assert ir is not None, 'Image_ir Not Found ' + path
+        h0, w0 = ir.shape[:2]  # orig hw
+        r = self.img_size / max(h0, w0)  # resize image to img_size
+        if r != 1:  # always resize down, only resize up if training with augmentation
+            interp = cv2.INTER_AREA if r < 1 and not self.augment else cv2.INTER_LINEAR
+            ir = cv2.resize(noisy_image_tensor, (int(w0 * r), int(h0 * r)), interpolation=interp)
 
         return ir  # ir ##, hw_original, hw_resized
     else:

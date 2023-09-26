@@ -20,4 +20,5 @@ autoencoder/runs-unnormalized-coco/
 autoencoder/checkpoint-normalized-coco/
 autoencoder/checkpoint-unormalized-coo/
 autoencoder/checkpoint-old/
+autoencoder/checkpoint_noise_range/
 runs/

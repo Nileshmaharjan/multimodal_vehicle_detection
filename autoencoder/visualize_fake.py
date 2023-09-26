@@ -164,8 +164,8 @@ def visualize_denoised_images(original, noisy, denoised, num_images=5):
 test_images, _ = next(iter(test_loader))
 
 # Add noise to the test images
-poisson_rate = 0.1
-gaussian_std_dev = 0.05
+poisson_rate = 2.00
+gaussian_std_dev = 0.01
 noisy_images = add_noise(test_images, poisson_rate, gaussian_std_dev)
 noisy_images = noisy_images.to(device)
 print('here')

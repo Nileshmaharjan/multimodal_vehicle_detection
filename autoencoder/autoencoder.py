@@ -24,31 +24,38 @@ data_path_1 = r"C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance
 data_path_2 = r"C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/images/ir/"
 data_path_3 = r"C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/images/coco/"
 
+combined_data_path = [data_path_1, data_path_2, data_path_3]
 
 train_transform3 = transforms.Compose([
     transforms.Resize((256, 256)),
     transforms.ToTensor(),
-    transforms.Normalize((0.46961793, 0.44640928, 0.40719114), (0.23942938, 0.23447396, 0.23768907))
-
 ])
 
 
-train_dataset3 = torchvision.datasets.ImageFolder(root=data_path_3, transform=train_transform3)
+# Combine datasets
+combined_datasets = []
+for path in combined_data_path:
+    dataset = torchvision.datasets.ImageFolder(root=path, transform=train_transform3)
+    combined_datasets.append(dataset)
+combined_dataset = ConcatDataset(combined_datasets)
 
-# # Define the length of each dataset
+# Define the length of the combined dataset
+combined_m = len(combined_dataset)
+print(combined_m)
+# Split the combined dataset with 70% training and 30% validation
+combined_train_data, combined_val_data = random_split(combined_dataset, [84576, 36247])
 
-m3 = len(train_dataset3)
 
-# Split the datasets
 
-train_data3, val_data3 = random_split(train_dataset3, [82800,35487])
+
 
 
 
 batch_size = 32
 
-train_loader = torch.utils.data.DataLoader(train_data3, batch_size=batch_size)
-valid_loader = torch.utils.data.DataLoader(val_data3, batch_size=batch_size)
+# Use DataLoader for the combined datasets
+train_loader = DataLoader(combined_train_data, batch_size=batch_size, shuffle=True)
+valid_loader = DataLoader(combined_val_data, batch_size=batch_size)
 
 def load_checkpoint(model, optimizer, checkpoint_path):
     checkpoint = torch.load(checkpoint_path)
@@ -157,7 +164,7 @@ autoencoder.to(device)
 
 # Function to save model checkpoint
 
-checkpoint_path = "C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/checkpoint/model_checkpoint_epoch_.pt"
+checkpoint_path = "C:/Users/User/Documents/Projects/Nilesh/fso_traffic_surveillance/autoencoder/checkpoint/model_checkpoint_epoch_23.pt"
 def save_checkpoint(epoch, model, optimizer, loss):
     checkpoint = {
         'epoch': epoch,
@@ -186,8 +193,8 @@ def train_epoch_den(autoencoder, device, dataloader, loss_fn, optimizer):
     # Iterate over the dataloader (we do not need the label values, this is unsupervised learning)
     for image_batch, _ in dataloader:  # with "_" we just ignore the labels (the second element of the dataloader tuple)
         # Move tensors to the proper device
-        poisson_rate = random.uniform(0.2, 0.4)
-        gaussian_std_dev = random.uniform(0.2, 0.4)
+        poisson_rate = random.uniform(0.01, 1.00)
+        gaussian_std_dev = random.uniform(0.01, 1.00)
 
 
         image_noisy = add_noise(image_batch, poisson_rate, gaussian_std_dev)
@@ -220,8 +227,8 @@ def test_epoch_den(autoencoder, device, dataloader, loss_fn):
         val_loss_list = []
         for image_batch, _ in dataloader:
             # Move tensors to the proper device
-            poisson_rate = random.uniform(0.2, 0.4)
-            gaussian_std_dev = random.uniform(0.2, 0.4)
+            poisson_rate = random.uniform(0.01, 1.00)
+            gaussian_std_dev = random.uniform(0.01, 1.00)
 
             image_noisy = add_noise(image_batch, poisson_rate, gaussian_std_dev)
             image_noisy = image_noisy.to(device)

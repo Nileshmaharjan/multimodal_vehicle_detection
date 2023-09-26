@@ -162,54 +162,54 @@ class SPPCSP(nn.Module):
         return self.cv7(self.act(self.bn(torch.cat((y1, y2), dim=1))))
 
 ########zjq###########
-class SE_Block(nn.Module):
-    def __init__(self, ch_in, reduction=16):
-        super(SE_Block, self).__init__()
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)  # 全局自适应池化
-        self.fc = nn.Sequential(
-            nn.Linear(ch_in, ch_in // reduction, bias=False),
-            nn.ReLU(inplace=True),
-            nn.Linear(ch_in // reduction, ch_in, bias=False),
-            nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        b, c, _, _ = x.size()
-        y = self.avg_pool(x).view(b, c) # squeeze操作
-        y = self.fc(y).view(b, c, 1, 1) # FC获取通道注意力权重，是具有全局信息的
-        return x * y.expand_as(x) # 注意力作用每一个通道上
-
-
-class MF(nn.Module):# stereo attention block
-    def __init__(self, channels):
-        super(MF, self).__init__()
-        self.mask_map_r = nn.Conv2d(channels, 1, 1, 1, 0, bias=True)
-        self.mask_map_i = nn.Conv2d(1, 1, 1, 1, 0, bias=True)
-        self.softmax = nn.Softmax(-1)
-        self.bottleneck1 = nn.Conv2d(1, 16, 3, 1, 1, bias=False)
-        self.bottleneck2 = nn.Conv2d(channels, 48, 3, 1, 1, bias=False)
-        self.se = SE_Block(64,16)
-        self.se_r = SE_Block(3,3)
-        self.se_i = SE_Block(1,1)
-
-
-    def forward(self, x):# B * C * H * W #x_left, x_right
-        x_left_ori, x_right_ori = x[0],x[1]
-        b, c, h, w = x_left_ori.shape
-        x_left = self.se_r(x_left_ori)
-        x_right = self.se_i(x_right_ori)
-
-        x_mask_left = torch.mul(self.mask_map_r(x_left).repeat(1,3,1,1),x_left)
-        x_mask_right = torch.mul(self.mask_map_i(x_right),x_right)
-       
-
-        out_IR = self.bottleneck1(x_mask_right+x_right_ori)
-        out_RGB = self.bottleneck2(x_mask_left+x_left_ori) #RGB
-        out = self.se(torch.cat([out_RGB,out_IR],1))
-        # import scipy.io as sio
-        # sio.savemat('features/output.mat', mdict={'data':out.cpu().numpy()})
-
-        return out
+# class SE_Block(nn.Module):
+#     def __init__(self, ch_in, reduction=16):
+#         super(SE_Block, self).__init__()
+#         self.avg_pool = nn.AdaptiveAvgPool2d(1)  # 全局自适应池化
+#         self.fc = nn.Sequential(
+#             nn.Linear(ch_in, ch_in // reduction, bias=False),
+#             nn.ReLU(inplace=True),
+#             nn.Linear(ch_in // reduction, ch_in, bias=False),
+#             nn.Sigmoid()
+#         )
+#
+#     def forward(self, x):
+#         b, c, _, _ = x.size()
+#         y = self.avg_pool(x).view(b, c) # squeeze操作
+#         y = self.fc(y).view(b, c, 1, 1) # FC Obtain the channel attention weight, which has global information
+#         return x * y.expand_as(x) # Attention acts on every channel
+#
+#
+# class MF(nn.Module):# stereo attention block
+#     def __init__(self, channels):
+#         super(MF, self).__init__()
+#         self.mask_map_r = nn.Conv2d(channels, 1, 1, 1, 0, bias=True)
+#         self.mask_map_i = nn.Conv2d(1, 1, 1, 1, 0, bias=True)
+#         self.softmax = nn.Softmax(-1)
+#         self.bottleneck1 = nn.Conv2d(1, 16, 3, 1, 1, bias=False)
+#         self.bottleneck2 = nn.Conv2d(channels, 48, 3, 1, 1, bias=False)
+#         self.se = SE_Block(64,16)
+#         self.se_r = SE_Block(3,3)
+#         self.se_i = SE_Block(1,1)
+#
+#
+#     def forward(self, x):# B * C * H * W #x_left, x_right
+#         x_left_ori, x_right_ori = x[0],x[1]
+#         b, c, h, w = x_left_ori.shape
+#         x_left = self.se_r(x_left_ori)
+#         x_right = self.se_i(x_right_ori)
+#
+#         x_mask_left = torch.mul(self.mask_map_r(x_left).repeat(1,3,1,1),x_left)
+#         x_mask_right = torch.mul(self.mask_map_i(x_right),x_right)
+#
+#
+#         out_IR = self.bottleneck1(x_mask_right+x_right_ori)
+#         out_RGB = self.bottleneck2(x_mask_left+x_left_ori) #RGB
+#         out = self.se(torch.cat([out_RGB,out_IR],1))
+#         # import scipy.io as sio
+#         # sio.savemat('features/output.mat', mdict={'data':out.cpu().numpy()})
+#
+#         return out
 
 class ScaledDotProductAttentionOnly(nn.Module):
     ''' Scaled Dot-Product Attention '''
@@ -559,3 +559,64 @@ class ACmix(nn.Module):
         out_conv = self.dep_conv(f_conv)
 
         return self.rate1 * out_att + self.rate2 * out_conv
+
+# Nilesh Maharjan
+class SE_Block(nn.Module):
+    def __init__(self, ch_in, reduction=16, num_heads=4):
+        super(SE_Block, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(ch_in, ch_in // reduction, bias=False),
+                nn.ReLU(inplace=True),
+                nn.Linear(ch_in // reduction, ch_in, bias=False),
+                nn.Sigmoid()
+            ) for _ in range(num_heads)
+        ])
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        residual = x  # Save the input as a residual
+        y = self.avg_pool(x).view(b, c)
+        attention_weights = [fc(y).view(b, c, 1, 1) for fc in self.fc]
+        combined_attention = torch.stack(attention_weights, dim=1)
+        attention = torch.mean(combined_attention, dim=1)  # Aggregate attention from all heads
+        x = x * attention.expand_as(x)  # Apply attention
+        x += residual  # Add the residual connection
+        return x
+
+class MF(nn.Module):
+    def __init__(self, channels):
+        super(MF, self).__init__()
+        self.mask_map_r = nn.Conv2d(channels, 1, 1, 1, 0, bias=True)
+        self.mask_map_i = nn.Conv2d(1, 1, 1, 1, 0, bias=True)
+        self.softmax = nn.Softmax(-1)
+        self.bottleneck1 = nn.Sequential(
+            nn.Conv2d(1, 16, 3, 1, 1, bias=False),
+            nn.BatchNorm2d(16),  # Add batch normalization
+            nn.ReLU(inplace=True)
+        )
+        self.bottleneck2 = nn.Sequential(
+            nn.Conv2d(channels, 48, 3, 1, 1, bias=False),
+            nn.BatchNorm2d(48),  # Add batch normalization
+            nn.ReLU(inplace=True)
+        )
+        self.se = SE_Block(64, 16)
+        self.se_r = SE_Block(3, 3)
+        self.se_i = SE_Block(1, 1)
+
+    def forward(self, x):
+        x_left_ori, x_right_ori = x[0], x[1]
+        b, c, h, w = x_left_ori.shape
+        x_left = self.se_r(x_left_ori)
+        x_right = self.se_i(x_right_ori)
+
+        x_mask_left = torch.mul(self.mask_map_r(x_left).repeat(1, 3, 1, 1), x_left)
+        x_mask_right = torch.mul(self.mask_map_i(x_right), x_right)
+
+        out_IR = self.bottleneck1(x_mask_right + x_right_ori)
+        out_RGB = self.bottleneck2(x_mask_left + x_left_ori)  # RGB
+        out = self.se(torch.cat([out_RGB, out_IR], 1))
+
+        return out
+

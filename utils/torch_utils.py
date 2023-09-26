@@ -230,6 +230,7 @@ def model_info(model, verbose=False, img_size=640):
     except (ImportError, Exception):
         fs = ''
 
+    print('fs', fs)
     logger.info(f"Model Summary: {len(list(model.modules()))} layers, {n_p} parameters, {n_g} gradients, {fs} GFLOPS")
 
 
