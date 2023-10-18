@@ -193,6 +193,8 @@ def train(hyp, opt, device, tb_writer=None):
     nl = model.model[-1].nl  # number of detection layers (used for scaling hyp['obj'])
     imgsz, imgsz_test = [check_img_size(x, gs) for x in opt.img_size]  # verify imgsz are gs-multiples
 
+    print(torch.cuda.device_count(), 'device count')
+
     # DP mode
     if cuda and rank == -1 and torch.cuda.device_count() > 1:
         model = torch.nn.DataParallel(model)
@@ -584,7 +586,7 @@ if __name__ == '__main__':
     parser.add_argument('--super', action='store_true', help='super resolution')
     parser.add_argument('--data', type=str,default='data/SRvedai.yaml', help='data.yaml path')
     parser.add_argument('--hyp', type=str, default='data/hyp.scratch.yaml', help='hyperparameters path')
-    parser.add_argument('--epochs', type=int, default=200)
+    parser.add_argument('--epochs', type=int, default=250)
     parser.add_argument('--ch_steam', type=int, default=3)
     parser.add_argument('--ch', type=int,default=64, help = '3 4 16 midfusion1:64 midfusion2,3:128 midfusion4:256') 
     parser.add_argument('--input_mode', type=str,default='RGB+IR+MF',help ='RGB IR RGB+IR(pixel-level fusion) RGB+IR+fusion(feature-level fusion)')
@@ -610,7 +612,7 @@ if __name__ == '__main__':
     parser.add_argument('--workers', type=int, default=4, help='maximum number of dataloader workers')
     parser.add_argument('--project', default='runs/train', help='save to project/name')
     parser.add_argument('--entity', default=None, help='W&B entity')
-    parser.add_argument('--name', default='exp-WDSR-MF-modified-high-noise', help='save to project/name')
+    parser.add_argument('--name', default='exp-WDSR-CBAM-MF-modified-low-noise', help='save to project/name')
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--quad', action='store_true', help='quad dataloader') #1/4的数据集
     parser.add_argument('--linear-lr', action='store_true', help='linear LR')

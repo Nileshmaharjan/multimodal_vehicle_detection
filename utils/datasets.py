@@ -1039,8 +1039,8 @@ def load_image(self, index):
         image_tensor = torch.from_numpy(image_rgb.transpose((2, 0, 1))).float() / 255.0
 
         # Add noise to the image
-        poisson_rate = random.uniform(0.5, 1.0)
-        gaussian_std_dev = random.uniform(0.5, 1.0)
+        poisson_rate = random.uniform(0.01, 0.1)
+        gaussian_std_dev = random.uniform(0.01, 0.1)
 
         noisy_image_tensor = add_noise(image_tensor, poisson_rate, gaussian_std_dev)
 
@@ -1086,8 +1086,8 @@ def load_ir(self, index,): #zjq
         image_tensor = torch.from_numpy(ir.transpose((2, 0, 1))).float() / 255.0
 
         # Add noise to the image
-        poisson_rate = random.uniform(0.5, 1.0)
-        gaussian_std_dev = random.uniform(0.5, 1.0)
+        poisson_rate = random.uniform(0.01, 0.1)
+        gaussian_std_dev = random.uniform(0.01, 0.1)
 
         noisy_image_tensor = add_noise(image_tensor, poisson_rate, gaussian_std_dev)
 
